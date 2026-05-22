@@ -38,7 +38,8 @@ export default function AdminNuevoProcesoPage() {
   const [currency, setCurrency] = useState("MXN");
   const [status, setStatus] = useState<ProcessStatus>("PENDING");
   const [priority, setPriority] = useState<Priority>("NORMAL");
-  const [estimatedDays, setEstimatedDays] = useState("");
+  const [phonePrefix, setPhonePrefix] = useState("+57");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [clientMessage, setClientMessage] = useState("");
 
   const handleNextStep = (e: React.FormEvent) => {
@@ -65,17 +66,17 @@ export default function AdminNuevoProcesoPage() {
 
     setIsSubmitting(true);
     try {
+      const fullPhone = phoneNumber ? `${phonePrefix} ${phoneNumber}` : undefined;
       const res = await createProcess({
         clientName,
         clientEmail: clientEmail || undefined,
-        clientPhone: clientPhone || undefined,
+        clientPhone: fullPhone,
         workName,
         description: description || undefined,
         price: parseFloat(price) || 0,
         currency,
         status,
         priority,
-        estimatedDays: estimatedDays ? parseInt(estimatedDays) : undefined,
         clientMessage: clientMessage || undefined
       });
 
@@ -178,14 +179,41 @@ export default function AdminNuevoProcesoPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[#9A9AB0] text-xs font-mono tracking-widest uppercase">Teléfono (Opcional)</label>
-                  <input
-                    type="tel"
-                    value={clientPhone}
-                    onChange={(e) => setClientPhone(e.target.value)}
-                    placeholder="+52 55 1234 5678"
-                    className="w-full bg-[#0A0A0F]/50 border border-[#2A2A38] rounded-xl px-4 py-3 text-sm text-[#F5F3EE] focus:outline-none focus:border-[#C9A84C]/50 transition-colors h-12"
-                  />
+                  <label className="text-[#9A9AB0] text-xs font-mono tracking-widest uppercase">Teléfono / WhatsApp (Opcional)</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={phonePrefix}
+                      onChange={(e) => setPhonePrefix(e.target.value)}
+                      className="w-36 bg-[#0A0A0F]/50 border border-[#2A2A38] rounded-xl px-3 py-3 text-sm text-[#F5F3EE] focus:outline-none focus:border-[#C9A84C]/50 transition-colors h-12 cursor-pointer shrink-0"
+                    >
+                      <option value="+52">🇲🇽 +52 MX</option>
+                      <option value="+57">🇨🇴 +57 CO</option>
+                      <option value="+54">🇦🇷 +54 AR</option>
+                      <option value="+58">🇻🇪 +58 VE</option>
+                      <option value="+1">🇺🇸 +1 US</option>
+                      <option value="+34">🇪🇸 +34 ES</option>
+                      <option value="+51">🇵🇪 +51 PE</option>
+                      <option value="+56">🇨🇱 +56 CL</option>
+                      <option value="+55">🇧🇷 +55 BR</option>
+                      <option value="+593">🇪🇨 +593 EC</option>
+                      <option value="+502">🇬🇹 +502 GT</option>
+                      <option value="+503">🇸🇻 +503 SV</option>
+                      <option value="+507">🇵🇦 +507 PA</option>
+                      <option value="+591">🇧🇴 +591 BO</option>
+                      <option value="+595">🇵🇾 +595 PY</option>
+                      <option value="+598">🇺🇾 +598 UY</option>
+                    </select>
+                    <input
+                      type="tel"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      placeholder="3224832415"
+                      className="flex-1 bg-[#0A0A0F]/50 border border-[#2A2A38] rounded-xl px-4 py-3 text-sm text-[#F5F3EE] focus:outline-none focus:border-[#C9A84C]/50 transition-colors h-12"
+                    />
+                  </div>
+                  {phoneNumber && (
+                    <p className="text-[#9A9AB0] text-xs font-mono">→ {phonePrefix} {phoneNumber}</p>
+                  )}
                 </div>
               </div>
 
@@ -288,19 +316,7 @@ export default function AdminNuevoProcesoPage() {
                   </select>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-[#9A9AB0] text-xs font-mono tracking-widest uppercase">Duración Estimada (Días)</label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-3 h-5 w-5 text-[#9A9AB0] opacity-50" />
-                    <input
-                      type="number"
-                      value={estimatedDays}
-                      onChange={(e) => setEstimatedDays(e.target.value)}
-                      placeholder="9"
-                      className="w-full bg-[#0A0A0F]/50 border border-[#2A2A38] rounded-xl pl-10 pr-4 py-3 text-sm text-[#F5F3EE] focus:outline-none focus:border-[#C9A84C]/50 transition-colors h-12"
-                    />
-                  </div>
-                </div>
+
 
                 <div className="space-y-2 md:col-span-2">
                   <label className="text-[#9A9AB0] text-xs font-mono tracking-widest uppercase">Mensaje de bienvenida personalizado (Para el consultante)</label>
