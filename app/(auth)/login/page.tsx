@@ -68,7 +68,7 @@ export default function LoginPage() {
 
           <div className="text-center mb-10">
             <h1 className="text-3xl font-serif text-[#F5F3EE] mb-2 tracking-wide">Acceso Privado</h1>
-            <p className="text-[#9A9AB0] text-sm tracking-widest uppercase font-mono">Aura Platform</p>
+            <p className="text-[#9A9AB0] text-xs tracking-widest uppercase font-mono">Consultas y Ritualizaciones</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">

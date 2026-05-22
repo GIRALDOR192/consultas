@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -7,43 +8,92 @@ import {
   Activity, 
   Sparkles, 
   Clock, 
-  ArrowRight
+  ArrowRight,
+  Loader2
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { getDashboardStats } from "@/app/admin/actions";
 
-const stats = [
-  {
-    title: "Procesos Activos",
-    value: "12",
-    description: "+2 esta semana",
-    icon: Activity,
-    color: "text-[#C9A84C]",
-  },
-  {
-    title: "Finalizados",
-    value: "148",
-    description: "Este año",
-    icon: Sparkles,
-    color: "text-[#6B4FA0]",
-  },
-  {
-    title: "Clientes",
-    value: "84",
-    description: "Total registrados",
-    icon: Users,
-    color: "text-[#F5F3EE]",
-  },
-  {
-    title: "Alertas",
-    value: "3",
-    description: "Requieren atención",
-    icon: Clock,
-    color: "text-red-400",
-  },
-];
+interface DashboardData {
+  activeCount: number;
+  completedCount: number;
+  clientsCount: number;
+  alertsCount: number;
+  recentProcesses: Array<{
+    id: string;
+    workName: string;
+    clientName: string;
+    status: string;
+    createdAt: string;
+  }>;
+  quickFollowups: Array<{
+    id: string;
+    workName: string;
+    clientName: string;
+    status: string;
+    progressPercent: number;
+  }>;
+}
 
 export default function AdminDashboard() {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadStats() {
+      try {
+        const stats = await getDashboardStats();
+        setData(stats);
+      } catch (err) {
+        console.error("Error loading dashboard data:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadStats();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
+        <Loader2 className="w-10 h-10 text-[#C9A84C] animate-spin" />
+        <p className="text-[#9A9AB0] text-sm font-mono tracking-widest uppercase">Canalizando energías...</p>
+      </div>
+    );
+  }
+
+  const activeStats = [
+    {
+      title: "Procesos Activos",
+      value: data?.activeCount ?? 0,
+      description: "Trabajos en evolución",
+      icon: Activity,
+      color: "text-[#C9A84C]",
+    },
+    {
+      title: "Finalizados",
+      value: data?.completedCount ?? 0,
+      description: "Rituales sellados",
+      icon: Sparkles,
+      color: "text-[#6B4FA0]",
+    },
+    {
+      title: "Clientes",
+      value: data?.clientsCount ?? 0,
+      description: "Total registrados",
+      icon: Users,
+      color: "text-[#F5F3EE]",
+    },
+    {
+      title: "Alertas",
+      value: data?.alertsCount ?? 0,
+      description: "Requieren atención",
+      icon: Clock,
+      color: (data?.alertsCount ?? 0) > 0 ? "text-red-400" : "text-[#9A9AB0] opacity-50",
+    },
+  ];
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -59,8 +109,9 @@ export default function AdminDashboard() {
         </Link>
       </div>
 
+      {/* Cards de Estadísticas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, index) => (
+        {activeStats.map((stat, index) => (
           <motion.div
             key={stat.title}
             initial={{ opacity: 0, y: 20 }}
@@ -86,6 +137,7 @@ export default function AdminDashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Actividad Reciente */}
         <motion.div 
           className="lg:col-span-2 space-y-6"
           initial={{ opacity: 0, y: 20 }}
@@ -95,28 +147,54 @@ export default function AdminDashboard() {
           <div className="glass-panel rounded-2xl p-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="font-serif text-xl tracking-wide text-[#C9A84C]">Actividad Reciente</h2>
-              <Button variant="ghost" className="text-[#9A9AB0] hover:text-[#C9A84C] text-xs uppercase tracking-wider">
-                Ver todo <ArrowRight className="w-3 h-3 ml-2" />
-              </Button>
+              <Link href="/admin/procesos">
+                <Button variant="ghost" className="text-[#9A9AB0] hover:text-[#C9A84C] text-xs uppercase tracking-wider">
+                  Ver todo <ArrowRight className="w-3 h-3 ml-2" />
+                </Button>
+              </Link>
             </div>
             
             <div className="space-y-6">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-start gap-4 pb-6 border-b border-[#2A2A38] last:border-0 last:pb-0">
-                  <div className="w-10 h-10 rounded-full bg-[#1A1A24] border border-[#2A2A38] flex items-center justify-center shrink-0">
-                    <Sparkles className="w-4 h-4 text-[#C9A84C]" />
+              {data?.recentProcesses && data.recentProcesses.length > 0 ? (
+                data.recentProcesses.map((p, i) => (
+                  <div key={p.id} className="flex items-start gap-4 pb-6 border-b border-[#2A2A38] last:border-0 last:pb-0">
+                    <div className="w-10 h-10 rounded-full bg-[#1A1A24] border border-[#2A2A38] flex items-center justify-center shrink-0">
+                      <Sparkles className="w-4 h-4 text-[#C9A84C]" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-[#F5F3EE] text-sm font-medium tracking-wide">
+                        {p.workName}
+                      </h4>
+                      <p className="text-[#9A9AB0] text-sm mt-1">
+                        Cliente: <span className="text-[#F5F3EE] font-medium">{p.clientName}</span>. Estado: {p.status}.
+                      </p>
+                      <span className="text-xs text-[#6B4FA0] font-mono tracking-widest mt-2 block uppercase">
+                        CREADO EL {p.createdAt}
+                      </span>
+                    </div>
+                    <Link href={`/admin/procesos/${p.id}`}>
+                      <Button variant="outline" size="sm" className="border-[#2A2A38] hover:bg-[#1A1A24] text-[#9A9AB0] hover:text-[#C9A84C]">
+                        Gestionar
+                      </Button>
+                    </Link>
                   </div>
-                  <div>
-                    <h4 className="text-[#F5F3EE] text-sm font-medium tracking-wide">Actualización de Proceso</h4>
-                    <p className="text-[#9A9AB0] text-sm mt-1">Se ha completado la fase de preparación para el cliente ID #{2400 + i}.</p>
-                    <span className="text-xs text-[#6B4FA0] font-mono tracking-widest mt-2 block">HACE {i} HORAS</span>
-                  </div>
+                ))
+              ) : (
+                <div className="text-center py-10">
+                  <Sparkles className="w-8 h-8 text-[#9A9AB0]/30 mx-auto mb-3" />
+                  <p className="text-[#9A9AB0] text-sm">No hay actividades registradas aún.</p>
+                  <Link href="/admin/procesos/nuevo" className="mt-4 inline-block">
+                    <Button variant="outline" size="sm" className="border-[#C9A84C]/30 text-[#C9A84C] hover:bg-[#C9A84C]/10">
+                      Crear primer proceso
+                    </Button>
+                  </Link>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         </motion.div>
 
+        {/* Seguimiento Rápido */}
         <motion.div 
           className="space-y-6"
           initial={{ opacity: 0, y: 20 }}
@@ -130,18 +208,26 @@ export default function AdminDashboard() {
              <h2 className="font-serif text-xl tracking-wide text-[#F5F3EE] mb-6">Seguimiento Rápido</h2>
              
              <div className="space-y-4">
-                {[
-                  { state: "PREPARACIÓN", name: "Limpieza Energética", color: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
-                  { state: "EN PROCESO", name: "Apertura de Caminos", color: "bg-green-500/20 text-green-400 border-green-500/30" },
-                  { state: "SELLADO", name: "Protección Áurica", color: "bg-[#C9A84C]/20 text-[#C9A84C] border-[#C9A84C]/30" },
-                ].map((item, i) => (
-                  <div key={i} className="p-4 rounded-xl bg-[#111118] border border-[#2A2A38] hover:border-[#C9A84C]/30 transition-colors cursor-pointer">
-                    <div className={`text-[10px] uppercase font-mono tracking-widest inline-block px-2 py-1 rounded border ${item.color} mb-2`}>
-                      {item.state}
-                    </div>
-                    <h4 className="text-[#F5F3EE] text-sm tracking-wide">{item.name}</h4>
+                {data?.quickFollowups && data.quickFollowups.length > 0 ? (
+                  data.quickFollowups.map((item) => (
+                    <Link href={`/admin/procesos/${item.id}`} key={item.id} className="block">
+                      <div className="p-4 rounded-xl bg-[#111118] border border-[#2A2A38] hover:border-[#C9A84C]/30 transition-all cursor-pointer">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-[10px] uppercase font-mono tracking-widest inline-block px-2 py-0.5 rounded border border-[#C9A84C]/30 bg-[#C9A84C]/10 text-[#C9A84C]">
+                            {item.status}
+                          </span>
+                          <span className="text-xs font-mono text-[#9A9AB0]">{item.progressPercent}%</span>
+                        </div>
+                        <h4 className="text-[#F5F3EE] text-sm tracking-wide font-medium">{item.workName}</h4>
+                        <p className="text-[#9A9AB0] text-xs mt-1">Cliente: {item.clientName}</p>
+                      </div>
+                    </Link>
+                  ))
+                ) : (
+                  <div className="text-center py-8 border border-dashed border-[#2A2A38] rounded-xl">
+                    <p className="text-[#9A9AB0] text-xs">Sin procesos activos</p>
                   </div>
-                ))}
+                )}
              </div>
           </div>
         </motion.div>

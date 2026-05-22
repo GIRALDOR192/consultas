@@ -20,8 +20,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Aura Platform | Servicios Espirituales",
-  description: "Plataforma privada y exclusiva de seguimiento.",
+  title: "Consultas y Ritualizaciones | Servicios Espirituales",
+  description: "Plataforma privada y exclusiva de seguimiento de consultas y rituales.",
   robots: {
     index: false,
     follow: false,

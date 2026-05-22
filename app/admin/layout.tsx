@@ -39,7 +39,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="min-h-screen bg-[#0A0A0F] flex flex-col md:flex-row">
       {/* Mobile Header */}
       <div className="md:hidden flex items-center justify-between p-4 border-b border-[#2A2A38] glass-panel z-50">
-        <div className="font-serif text-[#C9A84C] text-xl tracking-wide">AURA</div>
+        <div className="font-serif text-[#C9A84C] text-lg font-medium tracking-wide">CONSULTAS Y RITUALIZACIONES</div>
         <button 
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="text-[#9A9AB0] hover:text-[#F5F3EE]"
@@ -62,7 +62,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             `}
           >
             <div className="p-8 hidden md:block">
-              <h2 className="font-serif text-[#C9A84C] text-2xl tracking-widest uppercase">Aura</h2>
+              <h2 className="font-serif text-[#C9A84C] text-xl tracking-wide leading-tight">Consultas y<br />Ritualizaciones</h2>
               <p className="text-xs text-[#9A9AB0] tracking-widest font-mono mt-1">SANTUARIO</p>
             </div>
 

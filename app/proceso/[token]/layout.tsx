@@ -43,7 +43,7 @@ export default function ClientPortalLayout({ children }: { children: React.React
           transition={{ duration: 1, delay: 0.5 }}
           className="font-serif text-[#C9A84C] text-xl md:text-2xl tracking-[0.2em] opacity-80"
         >
-          AURA
+          CONSULTAS Y RITUALIZACIONES
         </motion.div>
       </header>
 
