@@ -19,12 +19,14 @@ import {
   Phone,
   ImageIcon,
   TrendingUp,
+  ExternalLink,
+  BookOpen,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { getProcessDetails, updateProcessStatus, deleteProcess } from "@/app/admin/actions";
-import { getEmotionalLogsByProcessId } from "@/app/proceso/actions";
+import { getEmotionalLogsByProcessId, getSignedReadUrl } from "@/app/proceso/actions";
 import { ProcessStatus } from "@prisma/client";
 import {
   LineChart,
@@ -56,11 +58,38 @@ interface ProcessDetails {
     email: string | null;
     phone: string | null;
   };
+  clientForm?: {
+    id: string;
+    fullName: string;
+    birthDate: string | null;
+    intention: string;
+    currentSituation: string;
+    additionalInfo: string | null;
+    submittedAt: string;
+  } | null;
+  uploads?: Array<{
+    id: string;
+    r2Key: string;
+    fileName: string;
+    mimeType: string;
+    fileSizeBytes: number;
+    isPaymentProof: boolean;
+    uploadedBy: string | null;
+    createdAt: string;
+  }>;
+  emotionalLogs?: Array<{
+    id: string;
+    type: string;
+    content: string;
+    mood: number | null;
+    logDate: string;
+  }>;
 }
 
 interface EmotionalLog {
   id: string;
   type: string;
+  content: string;
   mood: number | null;
   logDate: string;
 }
@@ -94,6 +123,10 @@ export default function AdminDetalleProcesoPage() {
   const [status, setStatus] = useState<ProcessStatus>("PENDING");
   const [progressPercent, setProgressPercent] = useState(0);
 
+  // Nuevos estados para la gestión de aportes del consultante
+  const [activeClientTab, setActiveClientTab] = useState<"formulario" | "bitacora" | "archivos">("formulario");
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+
   useEffect(() => {
     async function loadDetails() {
       setIsLoading(true);
@@ -103,7 +136,7 @@ export default function AdminDetalleProcesoPage() {
           setProcess(data as unknown as ProcessDetails);
           setStatus(data.status);
           setProgressPercent(data.progressPercent);
-          // Load emotional logs in parallel
+          // Cargar bitácoras en orden cronológico ascendente para el gráfico
           const logs = await getEmotionalLogsByProcessId(id);
           setEmotionalLogs(logs as EmotionalLog[]);
         } else {
@@ -118,6 +151,25 @@ export default function AdminDetalleProcesoPage() {
     }
     loadDetails();
   }, [id, router]);
+
+  // Cargar URLs firmadas para los archivos subidos por el cliente
+  useEffect(() => {
+    async function loadSignedUrls() {
+      if (!process || !process.uploads) return;
+      const clientFiles = process.uploads.filter(u => !u.uploadedBy || u.uploadedBy === "cliente");
+      if (clientFiles.length === 0) return;
+      
+      const urlMap: Record<string, string> = {};
+      for (const upload of clientFiles) {
+        const res = await getSignedReadUrl(upload.r2Key);
+        if (res.success && res.url) {
+          urlMap[upload.id] = res.url;
+        }
+      }
+      setSignedUrls(urlMap);
+    }
+    loadSignedUrls();
+  }, [process]);
 
   const handleUpdateStatus = async () => {
     setIsUpdating(true);
@@ -173,6 +225,8 @@ export default function AdminDetalleProcesoPage() {
     .map((l) => ({
       fecha: l.logDate,
       estado: l.mood,
+      comentario: l.content,
+      tipo: l.type,
     }));
 
   return (
@@ -329,14 +383,28 @@ export default function AdminDetalleProcesoPage() {
                       axisLine={{ stroke: "#2A2A38" }}
                     />
                     <Tooltip
-                      contentStyle={{
-                        backgroundColor: "#0A0A0F",
-                        border: "1px solid #2A2A38",
-                        borderRadius: "12px",
-                        color: "#F5F3EE",
-                        fontSize: "12px",
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          const moodEmojis = ["😔", "😟", "😕", "😐", "🙂", "😊", "😌", "✨", "🌟", "🌈"];
+                          const emoji = data.estado && data.estado >= 1 && data.estado <= 10 ? moodEmojis[data.estado - 1] : "✨";
+                          return (
+                            <div className="bg-[#0A0A0F] border border-[#2A2A38] rounded-xl p-3 max-w-[280px] text-xs space-y-1.5 shadow-xl text-left">
+                              <p className="text-[#9A9AB0] font-mono text-[9px] uppercase tracking-wider">{data.fecha}</p>
+                              <p className="text-[#C9A84C] font-semibold flex items-center gap-1.5">
+                                <span className="text-sm">{emoji}</span> Estado: {data.estado}/10
+                              </p>
+                              {data.comentario && (
+                                <p className="text-[#F5F3EE]/95 leading-relaxed italic border-t border-[#2A2A38] pt-1.5 mt-1.5 whitespace-pre-wrap">
+                                  "{data.comentario}"
+                                </p>
+                              )}
+                            </div>
+                          );
+                        }
+                        return null;
                       }}
-                      labelStyle={{ color: "#9A9AB0" }}
+                      trigger="click"
                     />
                     <Line
                       type="monotone"
@@ -355,11 +423,172 @@ export default function AdminDetalleProcesoPage() {
           {/* Anotaciones */}
           <div className="glass-panel p-6 rounded-2xl border border-[#2A2A38]">
             <h3 className="font-serif text-lg text-[#F5F3EE] border-b border-[#2A2A38] pb-2 mb-4">
-              Anotaciones del Ritual
+              Anotaciones del Ritual (Privadas)
             </h3>
             <p className="text-[#9A9AB0] text-sm leading-relaxed whitespace-pre-line">
               {process.description || "Sin anotaciones privadas para este proceso."}
             </p>
+          </div>
+
+          {/* Aportes del Consultante */}
+          <div className="glass-panel p-6 rounded-2xl border border-[#2A2A38] space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#2A2A38] pb-3 gap-2">
+              <h3 className="font-serif text-lg text-[#C9A84C] flex items-center gap-2">
+                <BookOpen className="w-5 h-5" /> Información y Aportes del Consultante
+              </h3>
+              
+              {/* Pestañas de control */}
+              <div className="flex bg-[#0A0A0F] p-1 rounded-xl border border-[#2A2A38] w-fit">
+                {(["formulario", "bitacora", "archivos"] as const).map((tab) => {
+                  const labels = {
+                    formulario: "Formulario",
+                    bitacora: "Bitácora",
+                    archivos: "Archivos"
+                  };
+                  return (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveClientTab(tab)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-mono uppercase tracking-wider transition-colors ${
+                        activeClientTab === tab
+                          ? "bg-[#C9A84C]/10 text-[#C9A84C] border border-[#C9A84C]/20"
+                          : "text-[#9A9AB0] hover:text-[#F5F3EE]"
+                      }`}
+                    >
+                      {labels[tab]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Contenido Pestaña: Formulario */}
+            {activeClientTab === "formulario" && (
+              <div className="space-y-4">
+                {process.clientForm ? (
+                  <div className="space-y-4 text-sm text-left">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-xs text-[#9A9AB0] block uppercase font-mono tracking-wider">Nombre de Nacimiento</span>
+                        <span className="text-[#F5F3EE] font-medium block mt-0.5">{process.clientForm.fullName}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-[#9A9AB0] block uppercase font-mono tracking-wider">Fecha de Nacimiento</span>
+                        <span className="text-[#F5F3EE] font-medium block mt-0.5">
+                          {process.clientForm.birthDate 
+                            ? new Date(process.clientForm.birthDate).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }) 
+                            : "No provista"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="border-t border-[#2A2A38] pt-3">
+                      <span className="text-xs text-[#9A9AB0] block uppercase font-mono tracking-wider">Intención del Proceso</span>
+                      <p className="text-sm text-[#F5F3EE]/95 mt-1.5 whitespace-pre-wrap leading-relaxed bg-[#0A0A0F]/50 p-3.5 rounded-xl border border-[#2A2A38]/30">
+                        {process.clientForm.intention}
+                      </p>
+                    </div>
+                    <div className="border-t border-[#2A2A38] pt-3">
+                      <span className="text-xs text-[#9A9AB0] block uppercase font-mono tracking-wider">Situación Actual</span>
+                      <p className="text-sm text-[#F5F3EE]/95 mt-1.5 whitespace-pre-wrap leading-relaxed bg-[#0A0A0F]/50 p-3.5 rounded-xl border border-[#2A2A38]/30">
+                        {process.clientForm.currentSituation}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[#9A9AB0] text-sm py-4 text-center">El consultante aún no ha completado el formulario de conexión inicial.</p>
+                )}
+              </div>
+            )}
+
+            {/* Contenido Pestaña: Bitácora */}
+            {activeClientTab === "bitacora" && (
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                {process.emotionalLogs && process.emotionalLogs.length > 0 ? (
+                  process.emotionalLogs.map((log) => {
+                    const moodEmojis = ["😔", "😟", "😕", "😐", "🙂", "😊", "😌", "✨", "🌟", "🌈"];
+                    const emoji = log.mood ? moodEmojis[log.mood - 1] : "✨";
+                    const logTypes = {
+                      emocion: { label: "Emoción", color: "text-pink-400" },
+                      sueno: { label: "Sueño", color: "text-purple-400" },
+                      cambio: { label: "Cambio Percibido", color: "text-amber-400" },
+                      experiencia: { label: "Experiencia Espiritual", color: "text-emerald-400" },
+                      pensamiento: { label: "Reflexión", color: "text-blue-400" }
+                    };
+                    const typeInfo = logTypes[log.type as keyof typeof logTypes] || { label: "Registro", color: "text-[#9A9AB0]" };
+                    
+                    return (
+                      <div key={log.id} className="p-3 bg-[#0A0A0F]/30 border border-[#2A2A38] rounded-xl space-y-1.5 text-left">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className={`font-mono uppercase tracking-wider text-[10px] ${typeInfo.color} font-semibold`}>
+                            {typeInfo.label} {log.mood && `• ${emoji} (${log.mood}/10)`}
+                          </span>
+                          <span className="text-[#9A9AB0] text-[10px]">
+                            {new Date(log.logDate).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#F5F3EE] leading-relaxed italic bg-[#0A0A0F]/20 p-2 rounded-lg border border-[#2A2A38]/10">
+                          "{log.content}"
+                        </p>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-[#9A9AB0] text-sm py-4 text-center">El consultante no ha registrado entradas en su bitácora aún.</p>
+                )}
+              </div>
+            )}
+
+            {/* Contenido Pestaña: Archivos */}
+            {activeClientTab === "archivos" && (
+              <div className="space-y-4">
+                {process.uploads && process.uploads.filter(u => !u.uploadedBy || u.uploadedBy === "cliente").length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {process.uploads
+                      .filter(u => !u.uploadedBy || u.uploadedBy === "cliente")
+                      .map((u) => {
+                        const isHeic = u.fileName.toLowerCase().endsWith(".heic") || u.fileName.toLowerCase().endsWith(".heif");
+                        const isPdf = u.fileName.toLowerCase().endsWith(".pdf");
+                        const url = signedUrls[u.id];
+                        return (
+                          <div key={u.id} className="bg-[#0A0A0F]/40 border border-[#2A2A38] rounded-xl p-2 flex flex-col space-y-2 relative overflow-hidden group text-left">
+                            {url ? (
+                              <div className="aspect-square relative rounded-lg overflow-hidden bg-[#111118] flex items-center justify-center border border-[#2A2A38]/40">
+                                {isHeic ? (
+                                  <div className="flex flex-col items-center justify-center p-2 text-center">
+                                    <ImageIcon className="w-6 h-6 text-[#C9A84C]" />
+                                    <span className="text-[8px] font-mono text-[#9A9AB0] uppercase mt-1">HEIC</span>
+                                  </div>
+                                ) : isPdf ? (
+                                  <div className="flex flex-col items-center justify-center p-2 text-center">
+                                    <FileText className="w-6 h-6 text-red-400" />
+                                    <span className="text-[8px] font-mono text-[#9A9AB0] uppercase mt-1">PDF</span>
+                                  </div>
+                                ) : (
+                                  <img src={url} alt={u.fileName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                )}
+                                <a href={url} target="_blank" rel="noopener noreferrer" className="absolute inset-0 bg-[#0A0A0F]/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                  <span className="text-[10px] font-mono text-[#C9A84C] border border-[#C9A84C]/50 px-2 py-1 rounded bg-[#0A0A0F]">Ver archivo</span>
+                                </a>
+                              </div>
+                            ) : (
+                              <div className="aspect-square bg-[#111118] rounded-lg flex items-center justify-center">
+                                <Loader2 className="w-4 h-4 text-[#C9A84C]/40 animate-spin" />
+                              </div>
+                            )}
+                            <div className="text-[10px] truncate font-medium text-[#F5F3EE]">{u.fileName}</div>
+                            <div className="text-[9px] text-[#9A9AB0]/60 font-mono flex justify-between">
+                              <span>{u.isPaymentProof ? "Comprobante" : "Imagen"}</span>
+                              <span>{(u.fileSizeBytes / 1024).toFixed(0)} KB</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                ) : (
+                  <p className="text-[#9A9AB0] text-sm py-4 text-center">El consultante no ha subido imágenes o archivos aún.</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

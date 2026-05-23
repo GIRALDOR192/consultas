@@ -87,8 +87,10 @@ export default function AdminMultimediaPage() {
   }, [uploads]);
 
   const handleFileSelect = (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      toast.error("Solo se permiten imágenes.");
+    const isImage = file.type.startsWith("image/") || 
+                    /\.(jpg|jpeg|png|gif|webp|heic|heif)$/i.test(file.name);
+    if (!isImage) {
+      toast.error("Solo se permiten imágenes (PNG, JPG, HEIC, etc.).");
       return;
     }
     if (file.size > 20 * 1024 * 1024) {
@@ -109,7 +111,19 @@ export default function AdminMultimediaPage() {
     if (!uploadFile || !r2Directory) return;
     setIsUploading(true);
     try {
-      const res = await generateAdminUploadUrl(id, uploadFile.name, uploadFile.type, r2Directory);
+      // Normalizar MIME type
+      let fileType = uploadFile.type;
+      if (!fileType) {
+        if (uploadFile.name.toLowerCase().endsWith(".heic")) {
+          fileType = "image/heic";
+        } else if (uploadFile.name.toLowerCase().endsWith(".heif")) {
+          fileType = "image/heif";
+        } else {
+          fileType = "image/jpeg";
+        }
+      }
+
+      const res = await generateAdminUploadUrl(id, uploadFile.name, fileType, r2Directory);
       if (!res.success || !res.signedUrl || !res.r2Key) {
         toast.error("No se pudo iniciar la subida.");
         return;
@@ -118,7 +132,7 @@ export default function AdminMultimediaPage() {
       const uploadRes = await fetch(res.signedUrl, {
         method: "PUT",
         body: uploadFile,
-        headers: { "Content-Type": uploadFile.type },
+        headers: { "Content-Type": fileType },
       });
 
       if (!uploadRes.ok) {
@@ -129,7 +143,7 @@ export default function AdminMultimediaPage() {
       await saveAdminUploadRecord(id, {
         r2Key: res.r2Key,
         fileName: uploadFile.name,
-        mimeType: uploadFile.type,
+        mimeType: fileType,
         fileSizeBytes: uploadFile.size,
         isPaymentProof: uploadForPayment,
       });
@@ -323,21 +337,39 @@ export default function AdminMultimediaPage() {
                   className="glass-panel rounded-2xl border border-[#2A2A38] overflow-hidden group hover:border-[#C9A84C]/20 transition-colors"
                 >
                   {signedUrls[upload.id] ? (
-                    <div className="aspect-square relative overflow-hidden bg-[#0A0A0F]">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={signedUrls[upload.id]}
-                        alt={upload.fileName}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                      <a
-                        href={signedUrls[upload.id]}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="absolute top-2 right-2 w-7 h-7 rounded-full bg-[#0A0A0F]/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5 text-[#C9A84C]" />
-                      </a>
+                    <div className="aspect-square relative overflow-hidden bg-[#0A0A0F] flex items-center justify-center">
+                      {upload.fileName.toLowerCase().endsWith(".heic") || upload.fileName.toLowerCase().endsWith(".heif") ? (
+                        <div className="flex flex-col items-center justify-center p-4 text-center space-y-2 w-full h-full border border-[#2A2A38] bg-[#111118]">
+                          <ImageIcon className="w-8 h-8 text-[#C9A84C] opacity-80" />
+                          <span className="text-[10px] font-mono text-[#9A9AB0] uppercase">Imagen HEIC</span>
+                          <span className="text-[9px] text-[#9A9AB0]/50 truncate max-w-[120px]">{upload.fileName}</span>
+                          <a
+                            href={signedUrls[upload.id]}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1 rounded bg-[#C9A84C]/10 border border-[#C9A84C]/30 text-[#C9A84C] text-[10px] hover:bg-[#C9A84C]/25 transition-colors font-medium mt-1"
+                          >
+                            Descargar/Ver
+                          </a>
+                        </div>
+                      ) : (
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={signedUrls[upload.id]}
+                            alt={upload.fileName}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          />
+                          <a
+                            href={signedUrls[upload.id]}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-[#0A0A0F]/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5 text-[#C9A84C]" />
+                          </a>
+                        </>
+                      )}
                     </div>
                   ) : (
                     <div className="aspect-square bg-[#0A0A0F]/60 flex items-center justify-center">

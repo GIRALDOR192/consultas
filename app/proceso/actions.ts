@@ -23,6 +23,7 @@ export async function getClientProcessByToken(token: string) {
           where: { isPublic: true },
           orderBy: { createdAt: "asc" },
         },
+        clientForm: true,
       },
     });
 
@@ -53,6 +54,7 @@ export async function getClientProcessByToken(token: string) {
       price: proc.price.toString(),
       currency: proc.currency,
       clientMessage: proc.clientMessage,
+      hasFormSubmitted: !!proc.clientForm,
       createdAtStr: proc.createdAt.toLocaleDateString("es-ES", {
         day: "numeric",
         month: "long",
@@ -384,5 +386,72 @@ export async function getProcessUploads(processId: string) {
     }));
   } catch (err) {
     return [];
+  }
+}
+
+// Client Form: save/update client form
+export async function saveClientForm(
+  token: string,
+  data: {
+    fullName: string;
+    birthDate: string;
+    intention: string;
+    currentSituation: string;
+  }
+) {
+  try {
+    const proc = await prisma.process.findUnique({ where: { token } });
+    if (!proc) return { success: false, error: "Proceso no encontrado." };
+
+    const bDate = data.birthDate ? new Date(data.birthDate) : null;
+
+    await prisma.clientForm.upsert({
+      where: { processId: proc.id },
+      update: {
+        fullName: data.fullName,
+        birthDate: bDate,
+        intention: data.intention,
+        currentSituation: data.currentSituation,
+      },
+      create: {
+        processId: proc.id,
+        fullName: data.fullName,
+        birthDate: bDate,
+        intention: data.intention,
+        currentSituation: data.currentSituation,
+      },
+    });
+
+    // Cambiar estado a PAYMENT_RECEIVED o PREPARATION para pokayoke si es necesario, 
+    // pero por ahora solo guardamos el formulario y revalidamos.
+    revalidatePath(`/proceso/${token}`);
+    revalidatePath(`/admin/procesos/${proc.id}`);
+    return { success: true };
+  } catch (err: any) {
+    console.error("Error saving client form:", err);
+    return { success: false, error: err.message || "Error al guardar el formulario." };
+  }
+}
+
+// Client Form: get client form
+export async function getClientForm(token: string) {
+  try {
+    const proc = await prisma.process.findUnique({
+      where: { token },
+      include: { clientForm: true },
+    });
+    if (!proc || !proc.clientForm) return null;
+
+    return {
+      fullName: proc.clientForm.fullName,
+      birthDate: proc.clientForm.birthDate
+        ? proc.clientForm.birthDate.toISOString().split("T")[0]
+        : "",
+      intention: proc.clientForm.intention,
+      currentSituation: proc.clientForm.currentSituation,
+    };
+  } catch (err) {
+    console.error("Error fetching client form:", err);
+    return null;
   }
 }

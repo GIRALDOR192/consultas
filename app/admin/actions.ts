@@ -4,6 +4,17 @@ import prisma from "@/lib/prisma";
 import { generateProcessTokens } from "@/lib/crypto/tokens";
 import { ProcessStatus, Priority } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { verifyToken } from "@/lib/auth/jwt";
+
+async function verifyAdminSession() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("aura_admin_session")?.value;
+  if (!token) throw new Error("No autorizado");
+  const payload = await verifyToken(token);
+  if (!payload) throw new Error("Sesión inválida");
+  return payload;
+}
 
 // ----------------------------------------------------
 // DASHBOARD & STATS ACTIONS
@@ -11,6 +22,7 @@ import { revalidatePath } from "next/cache";
 
 export async function getDashboardStats() {
   try {
+    await verifyAdminSession();
     // 1. Procesos Activos (todos menos COMPLETED y CANCELLED)
     const activeCount = await prisma.process.count({
       where: {
@@ -105,6 +117,7 @@ export async function getDashboardStats() {
 
 export async function getProcesses(search?: string, status?: string) {
   try {
+    await verifyAdminSession();
     const whereClause: any = {};
 
     if (status) {
@@ -146,6 +159,7 @@ export async function getProcesses(search?: string, status?: string) {
 
 export async function getProcessDetails(id: string) {
   try {
+    await verifyAdminSession();
     const proc = await prisma.process.findUnique({
       where: { id },
       include: {
@@ -155,6 +169,13 @@ export async function getProcessDetails(id: string) {
         },
         notes: {
           orderBy: { createdAt: "desc" }
+        },
+        clientForm: true,
+        uploads: {
+          orderBy: { createdAt: "desc" }
+        },
+        emotionalLogs: {
+          orderBy: { logDate: "desc" }
         }
       }
     });
@@ -186,6 +207,7 @@ export async function createProcess(formData: {
   clientMessage?: string;
 }) {
   try {
+    await verifyAdminSession();
     // 1. Crear o buscar Cliente
     let client = await prisma.client.findFirst({
       where: {
@@ -247,6 +269,7 @@ export async function createProcess(formData: {
 
 export async function updateProcessStatus(id: string, status: ProcessStatus, progressPercent: number) {
   try {
+    await verifyAdminSession();
     const updated = await prisma.process.update({
       where: { id },
       data: { 
@@ -277,6 +300,7 @@ export async function updateProcessStatus(id: string, status: ProcessStatus, pro
 
 export async function deleteProcess(id: string) {
   try {
+    await verifyAdminSession();
     await prisma.process.delete({
       where: { id }
     });
@@ -297,6 +321,7 @@ export async function deleteProcess(id: string) {
 
 export async function getClients() {
   try {
+    await verifyAdminSession();
     const list = await prisma.client.findMany({
       include: {
         _count: {
@@ -328,6 +353,7 @@ export async function getClients() {
 
 export async function getWorkers() {
   try {
+    await verifyAdminSession();
     const list = await prisma.user.findMany({
       orderBy: {
         createdAt: "desc"

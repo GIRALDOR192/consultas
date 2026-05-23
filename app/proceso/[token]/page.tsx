@@ -20,6 +20,7 @@ import {
   MessageCircle,
 } from "lucide-react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
   getClientProcessByToken,
@@ -40,6 +41,7 @@ interface ProcessData {
   price: string;
   currency: string;
   clientMessage: string | null;
+  hasFormSubmitted: boolean;
   createdAtStr: string;
   updates: {
     id: string;
@@ -82,8 +84,10 @@ export default function ClientPortalHome() {
   }, [token]);
 
   const handleFileSelect = (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      toast.error("Solo se permiten imágenes.");
+    const isImage = file.type.startsWith("image/") || 
+                    /\.(jpg|jpeg|png|gif|webp|heic|heif)$/i.test(file.name);
+    if (!isImage) {
+      toast.error("Solo se permiten imágenes (PNG, JPG, HEIC, etc.).");
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
@@ -104,7 +108,19 @@ export default function ClientPortalHome() {
     if (!uploadFile || !proc) return;
     setIsUploading(true);
     try {
-      const res = await generateUploadUrl(token, uploadFile.name, uploadFile.type);
+      // Normalizar MIME type
+      let fileType = uploadFile.type;
+      if (!fileType) {
+        if (uploadFile.name.toLowerCase().endsWith(".heic")) {
+          fileType = "image/heic";
+        } else if (uploadFile.name.toLowerCase().endsWith(".heif")) {
+          fileType = "image/heif";
+        } else {
+          fileType = "image/jpeg";
+        }
+      }
+
+      const res = await generateUploadUrl(token, uploadFile.name, fileType);
       if (!res.success || !res.signedUrl || !res.r2Key) {
         toast.error("No se pudo iniciar la subida.");
         return;
@@ -114,7 +130,7 @@ export default function ClientPortalHome() {
       const uploadRes = await fetch(res.signedUrl, {
         method: "PUT",
         body: uploadFile,
-        headers: { "Content-Type": uploadFile.type },
+        headers: { "Content-Type": fileType },
       });
 
       if (!uploadRes.ok) {
@@ -126,7 +142,7 @@ export default function ClientPortalHome() {
       await saveUploadRecord(token, {
         r2Key: res.r2Key,
         fileName: uploadFile.name,
-        mimeType: uploadFile.type,
+        mimeType: fileType,
         fileSizeBytes: uploadFile.size,
         isPaymentProof: false,
       });
@@ -179,9 +195,45 @@ export default function ClientPortalHome() {
   const colorClass = statusColors[proc.status] ?? statusColors["PENDING"];
   const progress = proc.progressPercent;
 
+  const statusSubtexts: Record<string, string> = {
+    PENDING: "Estamos revisando tus datos iniciales para el ritual.",
+    PAYMENT_RECEIVED: "Aportación energética confirmada. Tu guía preparará las ofrendas pronto.",
+    PREPARATION: "Tu guía está canalizando energías iniciales y alistando los altares sagrados.",
+    IN_PROGRESS: "El ritual está activo y en constante evolución espiritual en el altar.",
+    SEALED: "Tu petición y ofrendas han sido selladas para tu protección definitiva.",
+    COMPLETED: "El proceso ha culminado de manera exitosa. ¡Muchas bendiciones!",
+    PAUSED: "El proceso se encuentra pausado temporalmente.",
+    CANCELLED: "Este proceso espiritual ha sido cancelado.",
+  };
+
+  const statusExplain = statusSubtexts[proc.status] ?? "Tu proceso espiritual se está desarrollando.";
+  const latestUpdate = proc.updates.length > 0 ? proc.updates[proc.updates.length - 1] : null;
+
   return (
     <>
-      <div className="flex flex-col items-center w-full space-y-12">
+      <div className="flex flex-col items-center w-full space-y-10">
+
+        {/* Warning Banner - Formulario Faltante (Poka-yoke) */}
+        {!proc.hasFormSubmitted && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full max-w-lg p-4 rounded-2xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-between text-orange-400 text-xs shadow-lg animate-pulse"
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-xl">⚠️</span>
+              <div className="text-left">
+                <p className="font-semibold text-sm">Faltan datos importantes</p>
+                <p className="text-[#9A9AB0]">Llenar tu fecha de nacimiento e intención espiritual es vital.</p>
+              </div>
+            </div>
+            <Link href={`/proceso/${token}/formulario`}>
+              <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white font-semibold text-xs rounded-xl px-4 py-1.5 h-8">
+                Llenar ahora
+              </Button>
+            </Link>
+          </motion.div>
+        )}
 
         {/* Hero: Bienvenida + Nombre ritual */}
         <motion.div
@@ -192,9 +244,9 @@ export default function ClientPortalHome() {
         >
           <p className="text-[#9A9AB0] font-mono text-xs tracking-[0.3em] uppercase">
             Bienvenida/o,{" "}
-            <span className="text-[#C9A84C]">{proc.clientName}</span>
+            <span className="text-[#C9A84C] font-semibold">{proc.clientName}</span>
           </p>
-          <h1 className="font-serif text-4xl md:text-6xl text-transparent bg-clip-text bg-gradient-to-b from-[#F5F3EE] to-[#9A9AB0] tracking-tight leading-tight">
+          <h1 className="font-serif text-3xl md:text-5xl text-transparent bg-clip-text bg-gradient-to-b from-[#F5F3EE] to-[#9A9AB0] tracking-tight leading-tight max-w-xl mx-auto">
             {proc.workName}
           </h1>
 
@@ -211,12 +263,12 @@ export default function ClientPortalHome() {
           )}
         </motion.div>
 
-        {/* Círculo de Estado */}
+        {/* Círculo de Estado y Progreso */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 1.5, delay: 0.3 }}
-          className="relative w-44 h-44 md:w-56 md:h-56 flex items-center justify-center"
+          className="relative w-40 h-40 md:w-48 md:h-48 flex items-center justify-center"
         >
           <div className="absolute inset-0 rounded-full border border-[#2A2A38]/50" />
           <svg className="absolute inset-0 w-full h-full -rotate-90">
@@ -235,92 +287,113 @@ export default function ClientPortalHome() {
             <span className="text-[9px] font-mono text-[#9A9AB0] tracking-[0.2em] uppercase text-center px-2">
               Estado del Ritual
             </span>
+            <span className="text-xl font-serif text-[#C9A84C] font-semibold mt-1">{progress}%</span>
           </div>
         </motion.div>
 
-        {/* Estado Ritualístico */}
+        {/* Estado Ritualístico e Indicaciones Simples (Campesinos y personas mayores) */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.2 }}
-          className={`px-6 py-3 rounded-full border flex items-center space-x-3 ${colorClass}`}
+          className="text-center space-y-3"
         >
-          <div className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-          <span className="font-medium tracking-wide text-sm">
-            {proc.statusLabel}
-          </span>
+          <div className={`px-6 py-2.5 rounded-full border flex items-center space-x-3 w-fit mx-auto ${colorClass}`}>
+            <div className="w-2 h-2 rounded-full bg-current animate-pulse" />
+            <span className="font-semibold tracking-wider text-xs uppercase font-mono">
+              {proc.statusLabel}
+            </span>
+          </div>
+          <p className="text-sm text-[#F5F3EE] font-medium max-w-sm mx-auto leading-relaxed">
+            {statusExplain}
+          </p>
         </motion.div>
 
-        {/* Tarjetas de información */}
+        {/* Novedades y Mensajes Directos del Guía (No requiere navegación extra) */}
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.4 }}
-          className="w-full max-w-lg grid grid-cols-2 gap-3"
+          className="w-full max-w-lg glass-panel p-6 rounded-2xl border border-[#2A2A38] space-y-4 text-left"
         >
-          <div className="glass-panel p-4 rounded-2xl border border-[#2A2A38] space-y-1">
-            <div className="flex items-center gap-2 text-[#9A9AB0]">
-              <Calendar className="w-3.5 h-3.5" />
-              <span className="text-[10px] font-mono tracking-widest uppercase">Fecha Registro</span>
+          <div className="flex items-center justify-between border-b border-[#2A2A38] pb-3">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#C9A84C] opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#C9A84C]"></span>
+              </span>
+              <h3 className="font-serif text-sm text-[#F5F3EE] uppercase tracking-wider font-semibold">Mensajes y Novedades de tu Guía</h3>
             </div>
-            <p className="text-[#F5F3EE] text-sm font-medium">{proc.createdAtStr}</p>
+            {latestUpdate && (
+              <span className="text-[10px] font-mono text-[#9A9AB0]/60">{latestUpdate.createdAt}</span>
+            )}
           </div>
 
-          <div className="glass-panel p-4 rounded-2xl border border-[#2A2A38] space-y-1">
-            <div className="flex items-center gap-2 text-[#9A9AB0]">
-              <DollarSign className="w-3.5 h-3.5" />
-              <span className="text-[10px] font-mono tracking-widest uppercase">Ofrenda</span>
+          {latestUpdate ? (
+            <div className="space-y-3">
+              {latestUpdate.title && (
+                <h4 className="font-serif text-[#C9A84C] text-sm font-semibold">{latestUpdate.title}</h4>
+              )}
+              <p className="text-sm text-[#F5F3EE]/90 leading-relaxed italic bg-[#0A0A0F]/30 p-3 rounded-xl border border-[#2A2A38]/30">
+                "{latestUpdate.content}"
+              </p>
+              <div className="flex justify-end pt-1">
+                <Link href={`/proceso/${token}/timeline`}>
+                  <Button variant="ghost" className="text-[#C9A84C] hover:text-[#F0D080] text-xs font-semibold p-0 flex items-center gap-1.5 hover:bg-transparent">
+                    Ver todos los avances <span>➜</span>
+                  </Button>
+                </Link>
+              </div>
             </div>
-            <p className="text-[#C9A84C] text-sm font-semibold font-mono">
-              {parseFloat(proc.price).toLocaleString("es-ES")} {proc.currency}
+          ) : (
+            <p className="text-[#9A9AB0] text-xs leading-relaxed text-center py-4">
+              Tu guía espiritual está preparando los materiales y altares. Cualquier indicación o avance aparecerá aquí de inmediato.
             </p>
-          </div>
-
-          <div className="glass-panel p-4 rounded-2xl border border-[#2A2A38] col-span-2 space-y-1">
-            <div className="flex items-center gap-2 text-[#9A9AB0]">
-              <Activity className="w-3.5 h-3.5" />
-              <span className="text-[10px] font-mono tracking-widest uppercase">Estado Ritualístico</span>
-            </div>
-            <p className="text-[#F5F3EE] text-sm font-medium">{proc.statusLabel}</p>
-          </div>
+          )}
         </motion.div>
 
-        {/* Módulos de acceso rápido */}
+        {/* Módulos de acceso rápido (Poka-yoke con indicadores visuales de completado) */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1.7 }}
+          transition={{ delay: 1.6 }}
           className="w-full max-w-lg grid grid-cols-2 gap-4"
         >
-          <Link href={`/proceso/${token}/bitacora`}>
-            <div className="glass-card p-6 rounded-2xl border border-[#2A2A38] hover:border-[#C9A84C]/30 transition-all cursor-pointer group flex flex-col items-center space-y-3 hover:shadow-[0_0_20px_rgba(201,168,76,0.06)]">
-              <Moon className="w-6 h-6 text-[#9A9AB0] group-hover:text-[#C9A84C] transition-colors" />
-              <span className="text-xs tracking-widest text-[#F5F3EE] uppercase font-mono">Bitácora</span>
-              <span className="text-[10px] text-[#9A9AB0] text-center">Cómo te has sentido</span>
+          <Link href={`/proceso/${token}/formulario`}>
+            <div className={`glass-card p-6 rounded-2xl border transition-all cursor-pointer group flex flex-col items-center space-y-3 hover:shadow-[0_0_20px_rgba(201,168,76,0.06)] ${
+              proc.hasFormSubmitted 
+                ? "border-emerald-500/20 hover:border-emerald-500/40 bg-emerald-500/[0.01]" 
+                : "border-orange-500/30 hover:border-orange-500/50 bg-orange-500/[0.02] shadow-[0_0_15px_rgba(249,115,22,0.03)]"
+            }`}>
+              <BookOpen className={`w-6 h-6 group-hover:scale-110 transition-transform ${proc.hasFormSubmitted ? "text-emerald-400" : "text-orange-400"}`} />
+              <span className="text-xs tracking-widest text-[#F5F3EE] uppercase font-mono">Formulario</span>
+              <span className={`text-[10px] font-semibold tracking-wide ${proc.hasFormSubmitted ? "text-emerald-400" : "text-orange-400 animate-pulse"}`}>
+                {proc.hasFormSubmitted ? "✓ Completado" : "⚠️ Pendiente"}
+              </span>
             </div>
           </Link>
 
           <Link href={`/proceso/${token}/timeline`}>
             <div className="glass-card p-6 rounded-2xl border border-[#2A2A38] hover:border-[#C9A84C]/30 transition-all cursor-pointer group flex flex-col items-center space-y-3 hover:shadow-[0_0_20px_rgba(201,168,76,0.06)]">
               <Activity className="w-6 h-6 text-[#9A9AB0] group-hover:text-[#C9A84C] transition-colors" />
-              <span className="text-xs tracking-widest text-[#F5F3EE] uppercase font-mono">Avances</span>
-              <span className="text-[10px] text-[#9A9AB0] text-center">Línea de tiempo</span>
+              <span className="text-xs tracking-widest text-[#F5F3EE] uppercase font-mono">Historial</span>
+              <span className="text-[10px] text-[#9A9AB0] text-center">Todos los avances</span>
             </div>
           </Link>
 
-          <Link href={`/proceso/${token}/formulario`}>
+          <Link href={`/proceso/${token}/bitacora`}>
             <div className="glass-card p-6 rounded-2xl border border-[#2A2A38] hover:border-[#C9A84C]/30 transition-all cursor-pointer group flex flex-col items-center space-y-3 hover:shadow-[0_0_20px_rgba(201,168,76,0.06)]">
-              <BookOpen className="w-6 h-6 text-[#9A9AB0] group-hover:text-[#C9A84C] transition-colors" />
-              <span className="text-xs tracking-widest text-[#F5F3EE] uppercase font-mono">Formulario</span>
-              <span className="text-[10px] text-[#9A9AB0] text-center">Datos personales</span>
+              <Moon className="w-6 h-6 text-[#9A9AB0] group-hover:text-[#C9A84C] transition-colors" />
+              <span className="text-xs tracking-widest text-[#F5F3EE] uppercase font-mono">Mi Bitácora</span>
+              <span className="text-[10px] text-[#9A9AB0] text-center">Escribir cómo me siento</span>
             </div>
           </Link>
 
           <button onClick={() => setShowUploadModal(true)}>
             <div className="glass-card p-6 rounded-2xl border border-[#2A2A38] hover:border-[#C9A84C]/30 transition-all cursor-pointer group flex flex-col items-center space-y-3 w-full hover:shadow-[0_0_20px_rgba(201,168,76,0.06)]">
               <Camera className="w-6 h-6 text-[#9A9AB0] group-hover:text-[#C9A84C] transition-colors" />
-              <span className="text-xs tracking-widest text-[#F5F3EE] uppercase font-mono">Subir Imagen</span>
-              <span className="text-[10px] text-[#9A9AB0] text-center">Fotos del proceso</span>
+              <span className="text-xs tracking-widest text-[#F5F3EE] uppercase font-mono">Subir Fotos</span>
+              <span className="text-[10px] text-[#9A9AB0] text-center">Enviar imágenes</span>
             </div>
           </button>
         </motion.div>
