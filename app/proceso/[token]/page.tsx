@@ -26,6 +26,8 @@ import {
   getClientProcessByToken,
   generateUploadUrl,
   saveUploadRecord,
+  getClientForm,
+  saveClientForm,
 } from "@/app/proceso/actions";
 
 interface ProcessData {
@@ -42,6 +44,7 @@ interface ProcessData {
   currency: string;
   clientMessage: string | null;
   hasFormSubmitted: boolean;
+  pendingPaymentAmount: string | null;
   createdAtStr: string;
   updates: {
     id: string;
@@ -74,14 +77,51 @@ export default function ClientPortalHome() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
 
+  // States for force-form modal
+  const [showForceForm, setShowForceForm] = useState(false);
+  const [formStep, setFormStep] = useState(1);
+  const [forceFullName, setForceFullName] = useState("");
+  const [forceBirthDate, setForceBirthDate] = useState("");
+  const [showSecondPerson, setShowSecondPerson] = useState(false);
+  const [forceFullName2, setForceFullName2] = useState("");
+  const [forceBirthDate2, setForceBirthDate2] = useState("");
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const [isUploadingProof, setIsUploadingProof] = useState(false);
+  const [formSavedSuccess, setFormSavedSuccess] = useState(false);
+
   useEffect(() => {
     async function load() {
       const data = await getClientProcessByToken(token);
       setProc(data as ProcessData | null);
+      if (data) {
+        setForceFullName(data.clientName || "");
+        if (!data.hasFormSubmitted) {
+          setShowForceForm(true);
+        }
+      }
       setIsLoading(false);
     }
     load();
   }, [token]);
+
+  // Pre-fill form fields if client form is already submitted and they click to edit/view
+  useEffect(() => {
+    if (!proc || !proc.hasFormSubmitted) return;
+    async function prefill() {
+      const form = await getClientForm(token);
+      if (form) {
+        setForceFullName(form.fullName || proc?.clientName || "");
+        setForceBirthDate(form.birthDate || "");
+        if (form.fullName2 || form.birthDate2) {
+          setShowSecondPerson(true);
+          setForceFullName2(form.fullName2 || "");
+          setForceBirthDate2(form.birthDate2 || "");
+        }
+      }
+    }
+    prefill();
+  }, [proc, token]);
 
   const handleFileSelect = (file: File) => {
     const isImage = file.type.startsWith("image/") || 
@@ -213,25 +253,20 @@ export default function ClientPortalHome() {
     <>
       <div className="flex flex-col items-center w-full space-y-10">
 
-        {/* Warning Banner - Formulario Faltante (Poka-yoke) */}
-        {!proc.hasFormSubmitted && (
+        {/* Pago Pendiente Banner */}
+        {proc.pendingPaymentAmount && parseFloat(proc.pendingPaymentAmount) > 0 && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="w-full max-w-lg p-4 rounded-2xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-between text-orange-400 text-xs shadow-lg animate-pulse"
+            className="w-full max-w-lg p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-amber-400 text-xs shadow-lg"
           >
             <div className="flex items-center gap-3">
-              <span className="text-xl">⚠️</span>
+              <span className="text-xl">✨</span>
               <div className="text-left">
-                <p className="font-semibold text-sm">Faltan datos importantes</p>
-                <p className="text-[#9A9AB0]">Llenar tu fecha de nacimiento e intención espiritual es vital.</p>
+                <p className="font-semibold text-sm">Saldo Pendiente</p>
+                <p className="text-[#9A9AB0]">Queda un pago pendiente para iniciar: <span className="text-amber-400 font-semibold">${parseFloat(proc.pendingPaymentAmount).toLocaleString('es-ES', { minimumFractionDigits: 2 })} {proc.currency}</span></p>
               </div>
             </div>
-            <Link href={`/proceso/${token}/formulario`}>
-              <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white font-semibold text-xs rounded-xl px-4 py-1.5 h-8">
-                Llenar ahora
-              </Button>
-            </Link>
           </motion.div>
         )}
 
@@ -359,7 +394,7 @@ export default function ClientPortalHome() {
           transition={{ delay: 1.6 }}
           className="w-full max-w-lg grid grid-cols-2 gap-4"
         >
-          <Link href={`/proceso/${token}/formulario`}>
+          <button onClick={() => setShowForceForm(true)} className="w-full text-left">
             <div className={`glass-card p-6 rounded-2xl border transition-all cursor-pointer group flex flex-col items-center space-y-3 hover:shadow-[0_0_20px_rgba(201,168,76,0.06)] ${
               proc.hasFormSubmitted 
                 ? "border-emerald-500/20 hover:border-emerald-500/40 bg-emerald-500/[0.01]" 
@@ -371,7 +406,7 @@ export default function ClientPortalHome() {
                 {proc.hasFormSubmitted ? "✓ Completado" : "⚠️ Pendiente"}
               </span>
             </div>
-          </Link>
+          </button>
 
           <Link href={`/proceso/${token}/timeline`}>
             <div className="glass-card p-6 rounded-2xl border border-[#2A2A38] hover:border-[#C9A84C]/30 transition-all cursor-pointer group flex flex-col items-center space-y-3 hover:shadow-[0_0_20px_rgba(201,168,76,0.06)]">
@@ -496,6 +531,309 @@ export default function ClientPortalHome() {
                     <><Upload className="w-4 h-4" /> Enviar imagen</>
                   )}
                 </button>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Force Form Modal (Poka-yoke) */}
+      <AnimatePresence>
+        {showForceForm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-[#0A0A0F]/98 backdrop-blur-lg z-[9999] overflow-y-auto flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="glass-panel border border-[#C9A84C]/25 rounded-3xl p-6 md:p-8 max-w-md w-full space-y-6 my-8 relative shadow-[0_0_50px_rgba(201,168,76,0.08)]"
+            >
+              {/* Close button (only if form is already submitted) */}
+              {proc?.hasFormSubmitted && (
+                <button
+                  onClick={() => setShowForceForm(false)}
+                  className="absolute top-4 right-4 text-[#9A9AB0] hover:text-[#C9A84C] transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+
+              {/* Top progress indicator */}
+              <div className="absolute top-0 left-0 w-full h-1 bg-[#1A1A24]">
+                <div 
+                  className="h-full bg-gradient-to-r from-[#C9A84C] to-[#F0D080] transition-all duration-300"
+                  style={{ width: formStep === 1 ? "50%" : formStep === 2 ? "90%" : "100%" }}
+                />
+              </div>
+
+              <div className="text-center space-y-2">
+                <div className="w-12 h-12 rounded-full bg-[#C9A84C]/10 border border-[#C9A84C]/20 flex items-center justify-center mx-auto">
+                  <Sparkles className="w-5 h-5 text-[#C9A84C]" />
+                </div>
+                <h3 className="font-serif text-xl text-[#F5F3EE]">Datos de Conexión</h3>
+                <p className="text-[#9A9AB0] text-xs">
+                  Por favor, confirma tus datos personales para alinear las energías del ritual.
+                </p>
+              </div>
+
+              {formStep === 1 && (
+                <div className="space-y-4 pt-2">
+                  <div className="space-y-1.5">
+                    <label className="text-[#9A9AB0] text-[10px] font-mono tracking-widest uppercase">Nombre Completo</label>
+                    <input
+                      type="text"
+                      value={forceFullName}
+                      onChange={(e) => setForceFullName(e.target.value)}
+                      placeholder="Tu nombre completo de nacimiento"
+                      className="w-full bg-[#0A0A0F]/50 border border-[#2A2A38] rounded-xl px-4 py-3 text-sm text-[#F5F3EE] focus:outline-none focus:border-[#C9A84C]/50 transition-colors h-11"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[#9A9AB0] text-[10px] font-mono tracking-widest uppercase">Fecha de Nacimiento</label>
+                    <input
+                      type="date"
+                      value={forceBirthDate}
+                      onChange={(e) => setForceBirthDate(e.target.value)}
+                      className="w-full bg-[#0A0A0F]/50 border border-[#2A2A38] rounded-xl px-4 py-3 text-sm text-[#F5F3EE] focus:outline-none focus:border-[#C9A84C]/50 transition-colors h-11 [color-scheme:dark]"
+                    />
+                  </div>
+
+                  {!showSecondPerson ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowSecondPerson(true)}
+                      className="w-full py-2.5 border border-dashed border-[#2A2A38] rounded-xl text-xs text-[#9A9AB0] hover:text-[#C9A84C] hover:border-[#C9A84C]/40 transition-colors flex items-center justify-center gap-1.5 font-mono"
+                    >
+                      ➕ Añadir segunda persona (Parejas/Familias)
+                    </button>
+                  ) : (
+                    <div className="p-4 rounded-xl border border-[#2A2A38]/60 bg-[#0A0A0F]/30 space-y-3 relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowSecondPerson(false);
+                          setForceFullName2("");
+                          setForceBirthDate2("");
+                        }}
+                        className="absolute top-2 right-2 text-xs text-red-400 hover:text-red-300 underline font-mono"
+                      >
+                        Quitar
+                      </button>
+                      <p className="text-[10px] font-mono text-[#C9A84C] uppercase tracking-wider">Segunda Persona</p>
+                      
+                      <div className="space-y-1.5">
+                        <label className="text-[#9A9AB0] text-[9px] font-mono tracking-widest uppercase">Nombre Completo</label>
+                        <input
+                          type="text"
+                          value={forceFullName2}
+                          onChange={(e) => setForceFullName2(e.target.value)}
+                          placeholder="Nombre de la pareja o familiar"
+                          className="w-full bg-[#0A0A0F]/50 border border-[#2A2A38] rounded-xl px-3 py-2.5 text-xs text-[#F5F3EE] focus:outline-none focus:border-[#C9A84C]/50 transition-colors h-10"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[#9A9AB0] text-[9px] font-mono tracking-widest uppercase">Fecha de Nacimiento</label>
+                        <input
+                          type="date"
+                          value={forceBirthDate2}
+                          onChange={(e) => setForceBirthDate2(e.target.value)}
+                          className="w-full bg-[#0A0A0F]/50 border border-[#2A2A38] rounded-xl px-3 py-2.5 text-xs text-[#F5F3EE] focus:outline-none focus:border-[#C9A84C]/50 transition-colors h-10 [color-scheme:dark]"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!forceFullName.trim()) {
+                        toast.error("Por favor ingresa tu nombre completo.");
+                        return;
+                      }
+                      if (!forceBirthDate) {
+                        toast.error("Por favor ingresa tu fecha de nacimiento.");
+                        return;
+                      }
+                      setFormStep(2);
+                    }}
+                    className="w-full py-3 bg-[#C9A84C] hover:bg-[#F0D080] text-[#0A0A0F] font-semibold text-sm rounded-xl transition-colors mt-4 flex items-center justify-center gap-1.5"
+                  >
+                    Siguiente: Comprobante <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {formStep === 2 && (
+                <div className="space-y-4 pt-2">
+                  <div className="text-left bg-[#0A0A0F]/40 p-3 rounded-xl border border-[#2A2A38]/50 mb-2">
+                    <p className="text-[#C9A84C] font-mono text-[9px] uppercase tracking-wider">Confirmación de datos</p>
+                    <p className="text-xs text-[#F5F3EE] font-medium mt-0.5">{forceFullName}</p>
+                    {showSecondPerson && forceFullName2 && (
+                      <p className="text-xs text-[#9A9AB0] mt-0.5">y {forceFullName2}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[#9A9AB0] text-[10px] font-mono tracking-widest uppercase">Comprobante de Aportación</label>
+                    <div
+                      onClick={() => document.getElementById("force-file-input")?.click()}
+                      className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${
+                        proofFile
+                          ? "border-emerald-500/40 bg-emerald-500/5"
+                          : "border-[#2A2A38] hover:border-[#C9A84C]/40 hover:bg-[#C9A84C]/3"
+                      }`}
+                    >
+                      <input
+                        id="force-file-input"
+                        type="file"
+                        accept="image/*,.pdf"
+                        className="hidden"
+                        onChange={(e) => {
+                          const selected = e.target.files?.[0];
+                          if (selected) {
+                            if (!selected.type.startsWith("image/") && !selected.name.toLowerCase().endsWith(".pdf") && !selected.name.toLowerCase().endsWith(".heic")) {
+                              toast.error("Solo se permiten imágenes (PNG, JPG, HEIC) o archivos PDF.");
+                              return;
+                            }
+                            if (selected.size > 10 * 1024 * 1024) {
+                              toast.error("El archivo no puede pesar más de 10 MB.");
+                              return;
+                            }
+                            setProofFile(selected);
+                          }
+                        }}
+                      />
+
+                      {proofFile ? (
+                        <div className="space-y-2">
+                          <div className="w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto">
+                            <Check className="w-5 h-5 text-emerald-400" />
+                          </div>
+                          <p className="text-emerald-400 text-xs font-medium truncate max-w-[200px] mx-auto">{proofFile.name}</p>
+                          <p className="text-[#9A9AB0] text-[10px]">
+                            {(proofFile.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <Upload className="w-8 h-8 text-[#9A9AB0] mx-auto opacity-60" />
+                          <p className="text-[#9A9AB0] text-xs">
+                            Seleccionar comprobante de pago
+                          </p>
+                          <p className="text-[#9A9AB0]/50 text-[10px]">PNG, JPG, HEIC, PDF hasta 10 MB</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 mt-4">
+                    <button
+                      type="button"
+                      disabled={isSubmittingForm}
+                      onClick={() => setFormStep(1)}
+                      className="flex-1 py-3 border border-[#2A2A38] text-[#9A9AB0] hover:bg-[#1A1A24] font-semibold text-sm rounded-xl transition-colors"
+                    >
+                      Atrás
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSubmittingForm}
+                      onClick={async () => {
+                        setIsSubmittingForm(true);
+                        try {
+                          // 1. Si hay archivo comprobante, subirlo
+                          if (proofFile) {
+                            setIsUploadingProof(true);
+                            let fileType = proofFile.type;
+                            if (!fileType) {
+                              if (proofFile.name.toLowerCase().endsWith(".heic")) {
+                                fileType = "image/heic";
+                              } else if (proofFile.name.toLowerCase().endsWith(".heif")) {
+                                fileType = "image/heif";
+                              } else if (proofFile.name.toLowerCase().endsWith(".pdf")) {
+                                fileType = "application/pdf";
+                              } else {
+                                fileType = "image/jpeg";
+                              }
+                            }
+                            const res = await generateUploadUrl(token, proofFile.name, fileType);
+                            if (!res.success || !res.signedUrl || !res.r2Key) {
+                              toast.error("Error al iniciar subida de comprobante.");
+                              setIsSubmittingForm(false);
+                              setIsUploadingProof(false);
+                              return;
+                            }
+                            const putRes = await fetch(res.signedUrl, {
+                              method: "PUT",
+                              body: proofFile,
+                              headers: { "Content-Type": fileType },
+                            });
+                            if (!putRes.ok) {
+                              toast.error("Error al subir comprobante a R2.");
+                              setIsSubmittingForm(false);
+                              setIsUploadingProof(false);
+                              return;
+                            }
+                            await saveUploadRecord(token, {
+                              r2Key: res.r2Key,
+                              fileName: proofFile.name,
+                              mimeType: fileType,
+                              fileSizeBytes: proofFile.size,
+                              isPaymentProof: true,
+                            });
+                            setIsUploadingProof(false);
+                          }
+
+                          // 2. Guardar formulario
+                          const resSave = await saveClientForm(token, {
+                            fullName: forceFullName,
+                            birthDate: forceBirthDate,
+                            fullName2: showSecondPerson ? forceFullName2 : undefined,
+                            birthDate2: showSecondPerson ? forceBirthDate2 : undefined,
+                          });
+
+                          if (resSave.success) {
+                            setFormSavedSuccess(true);
+                            toast.success("¡Datos guardados con éxito!");
+                            setTimeout(() => {
+                              setShowForceForm(false);
+                              window.location.reload();
+                            }, 1500);
+                          } else {
+                            toast.error(resSave.error || "Ocurrió un error al guardar.");
+                          }
+                        } catch (err) {
+                          console.error(err);
+                          toast.error("Error del servidor.");
+                        } finally {
+                          setIsSubmittingForm(false);
+                        }
+                      }}
+                      className="flex-1 py-3 bg-[#3D2B6B] hover:bg-[#6B4FA0] text-[#F5F3EE] font-semibold text-sm rounded-xl transition-colors border border-[#6B4FA0]/30 shadow-[0_0_20px_rgba(61,43,107,0.3)] flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      {isSubmittingForm ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          {isUploadingProof ? "Subiendo..." : "Guardando..."}
+                        </>
+                      ) : formSavedSuccess ? (
+                        <>
+                          <Check className="w-4 h-4" />
+                          ¡Completado!
+                        </>
+                      ) : (
+                        <>
+                          Sellar e Iniciar
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
               )}
             </motion.div>
           </motion.div>

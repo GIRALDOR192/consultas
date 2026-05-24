@@ -185,6 +185,8 @@ export async function getProcessDetails(id: string) {
     return {
       ...proc,
       price: proc.price.toString(), // Convert decimal to string for client consumption
+      pendingPaymentAmount: proc.pendingPaymentAmount?.toString() || null,
+      pendingPaymentDateStr: proc.pendingPaymentDate ? proc.pendingPaymentDate.toISOString().split("T")[0] : null,
       createdAtStr: proc.createdAt.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
     };
   } catch (error) {
@@ -311,6 +313,45 @@ export async function deleteProcess(id: string) {
     return { success: true };
   } catch (error: any) {
     console.error("Error deleting process:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateProcessAdminNotes(id: string, adminNotes: string) {
+  try {
+    await verifyAdminSession();
+    await prisma.process.update({
+      where: { id },
+      data: { adminNotes }
+    });
+    revalidatePath(`/admin/procesos/${id}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error updating admin notes:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateProcessPaymentInfo(
+  id: string,
+  amount: number | null,
+  dateStr: string | null
+) {
+  try {
+    await verifyAdminSession();
+    const pDate = dateStr ? new Date(dateStr) : null;
+    await prisma.process.update({
+      where: { id },
+      data: {
+        pendingPaymentAmount: amount,
+        pendingPaymentDate: pDate
+      }
+    });
+    revalidatePath(`/admin/procesos/${id}`);
+    revalidatePath("/admin");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error updating payment info:", error);
     return { success: false, error: error.message };
   }
 }

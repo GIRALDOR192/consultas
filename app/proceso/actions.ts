@@ -55,6 +55,7 @@ export async function getClientProcessByToken(token: string) {
       currency: proc.currency,
       clientMessage: proc.clientMessage,
       hasFormSubmitted: !!proc.clientForm,
+      pendingPaymentAmount: proc.pendingPaymentAmount?.toString() || null,
       createdAtStr: proc.createdAt.toLocaleDateString("es-ES", {
         day: "numeric",
         month: "long",
@@ -395,8 +396,10 @@ export async function saveClientForm(
   data: {
     fullName: string;
     birthDate: string;
-    intention: string;
-    currentSituation: string;
+    fullName2?: string;
+    birthDate2?: string;
+    intention?: string;
+    currentSituation?: string;
   }
 ) {
   try {
@@ -404,21 +407,28 @@ export async function saveClientForm(
     if (!proc) return { success: false, error: "Proceso no encontrado." };
 
     const bDate = data.birthDate ? new Date(data.birthDate) : null;
+    const bDate2 = data.birthDate2 ? new Date(data.birthDate2) : null;
+    const intentStr = data.intention || "Administrativo";
+    const situationStr = data.currentSituation || "Administrativo";
 
     await prisma.clientForm.upsert({
       where: { processId: proc.id },
       update: {
         fullName: data.fullName,
         birthDate: bDate,
-        intention: data.intention,
-        currentSituation: data.currentSituation,
+        fullName2: data.fullName2 || null,
+        birthDate2: bDate2,
+        intention: intentStr,
+        currentSituation: situationStr,
       },
       create: {
         processId: proc.id,
         fullName: data.fullName,
         birthDate: bDate,
-        intention: data.intention,
-        currentSituation: data.currentSituation,
+        fullName2: data.fullName2 || null,
+        birthDate2: bDate2,
+        intention: intentStr,
+        currentSituation: situationStr,
       },
     });
 
@@ -446,6 +456,10 @@ export async function getClientForm(token: string) {
       fullName: proc.clientForm.fullName,
       birthDate: proc.clientForm.birthDate
         ? proc.clientForm.birthDate.toISOString().split("T")[0]
+        : "",
+      fullName2: proc.clientForm.fullName2 || "",
+      birthDate2: proc.clientForm.birthDate2
+        ? proc.clientForm.birthDate2.toISOString().split("T")[0]
         : "",
       intention: proc.clientForm.intention,
       currentSituation: proc.clientForm.currentSituation,

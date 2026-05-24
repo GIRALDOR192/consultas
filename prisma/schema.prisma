@@ -111,6 +111,8 @@ model Process {
   surveysEnabled  Boolean       @default(true)
   adminNotes      String?       // notas internas admin
   clientMessage   String?       // mensaje de bienvenida personalizado
+  pendingPaymentAmount Decimal?      @db.Decimal(10,2)
+  pendingPaymentDate   DateTime?
   startedAt       DateTime?
   completedAt     DateTime?
   createdAt       DateTime      @default(now())
@@ -159,6 +161,8 @@ model ClientForm {
   processId       String   @unique
   fullName        String
   birthDate       DateTime?
+  fullName2       String?
+  birthDate2      DateTime?
   intention       String
   currentSituation String
   additionalInfo  String?
