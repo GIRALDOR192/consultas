@@ -807,9 +807,9 @@ export default function ClientPortalHome() {
                           } else {
                             toast.error(resSave.error || "Ocurrió un error al guardar.");
                           }
-                        } catch (err) {
+                        } catch (err: any) {
                           console.error(err);
-                          toast.error("Error del servidor.");
+                          toast.error(err.message || "Error del servidor.");
                         } finally {
                           setIsSubmittingForm(false);
                         }
