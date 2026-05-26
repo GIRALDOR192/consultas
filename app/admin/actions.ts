@@ -176,6 +176,9 @@ export async function getProcessDetails(id: string) {
         },
         emotionalLogs: {
           orderBy: { logDate: "desc" }
+        },
+        ritualizations: {
+          orderBy: { orderIndex: "asc" }
         }
       }
     });
@@ -184,9 +187,10 @@ export async function getProcessDetails(id: string) {
 
     return {
       ...proc,
-      price: proc.price.toString(), // Convert decimal to string for client consumption
+      price: proc.price.toString(),
       pendingPaymentAmount: proc.pendingPaymentAmount?.toString() || null,
       pendingPaymentDateStr: proc.pendingPaymentDate ? proc.pendingPaymentDate.toISOString().split("T")[0] : null,
+      clientLastSeenStr: proc.clientLastSeen ? proc.clientLastSeen.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null,
       createdAtStr: proc.createdAt.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
     };
   } catch (error) {
@@ -199,6 +203,9 @@ export async function createProcess(formData: {
   clientName: string;
   clientEmail?: string;
   clientPhone?: string;
+  clientBirthDate?: string;   // YYYY-MM-DD - fecha de nacimiento del consultante
+  clientBirthDate2?: string;  // segunda persona (opcional)
+  clientFullName2?: string;   // segunda persona nombre (opcional)
   workName: string;
   description?: string;
   price: number;
@@ -218,13 +225,22 @@ export async function createProcess(formData: {
       }
     });
 
+    const birthDateObj = formData.clientBirthDate ? new Date(formData.clientBirthDate) : null;
+
     if (!client) {
       client = await prisma.client.create({
         data: {
           name: formData.clientName,
           email: formData.clientEmail || null,
           phone: formData.clientPhone || null,
+          birthDate: birthDateObj,
         }
+      });
+    } else if (birthDateObj && !client.birthDate) {
+      // Actualizar fecha de nacimiento si no la tenía
+      client = await prisma.client.update({
+        where: { id: client.id },
+        data: { birthDate: birthDateObj }
       });
     }
 
@@ -249,7 +265,22 @@ export async function createProcess(formData: {
       }
     });
 
-    // 4. Agregar log de actividad
+    // 4. Si el admin proveyó fecha de nacimiento, pre-crear ClientForm para omitir el poka-yoke de datos personales
+    if (formData.clientBirthDate) {
+      await prisma.clientForm.create({
+        data: {
+          processId: newProcess.id,
+          fullName: formData.clientName,
+          birthDate: birthDateObj,
+          fullName2: formData.clientFullName2 || null,
+          birthDate2: formData.clientBirthDate2 ? new Date(formData.clientBirthDate2) : null,
+          intention: "Administrativo",
+          currentSituation: "Administrativo",
+        }
+      });
+    }
+
+    // 5. Log de actividad
     await prisma.activityLog.create({
       data: {
         action: "CREATE_PROCESS",
@@ -328,6 +359,103 @@ export async function updateProcessAdminNotes(id: string, adminNotes: string) {
     return { success: true };
   } catch (error: any) {
     console.error("Error updating admin notes:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateProcessDescription(id: string, description: string) {
+  try {
+    await verifyAdminSession();
+    await prisma.process.update({
+      where: { id },
+      data: { description }
+    });
+    revalidatePath(`/admin/procesos/${id}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error updating process description:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ----------------------------------------------------
+// RITUALIZATION ACTIONS
+// ----------------------------------------------------
+
+export async function getRitualizations(processId: string) {
+  try {
+    await verifyAdminSession();
+    const list = await prisma.ritualization.findMany({
+      where: { processId },
+      orderBy: { orderIndex: "asc" }
+    });
+    return list;
+  } catch (error) {
+    console.error("Error fetching ritualizations:", error);
+    return [];
+  }
+}
+
+export async function createRitualization(processId: string, name: string, notes?: string) {
+  try {
+    await verifyAdminSession();
+    const count = await prisma.ritualization.count({ where: { processId } });
+    const ritual = await prisma.ritualization.create({
+      data: {
+        processId,
+        name,
+        notes: notes || null,
+        orderIndex: count,
+      }
+    });
+    revalidatePath(`/admin/procesos/${processId}`);
+    return { success: true, ritual };
+  } catch (error: any) {
+    console.error("Error creating ritualization:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function toggleRitualization(id: string, processId: string, isCompleted: boolean) {
+  try {
+    await verifyAdminSession();
+    await prisma.ritualization.update({
+      where: { id },
+      data: {
+        isCompleted,
+        completedAt: isCompleted ? new Date() : null
+      }
+    });
+    revalidatePath(`/admin/procesos/${processId}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error toggling ritualization:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateRitualizationNotes(id: string, processId: string, notes: string) {
+  try {
+    await verifyAdminSession();
+    await prisma.ritualization.update({
+      where: { id },
+      data: { notes }
+    });
+    revalidatePath(`/admin/procesos/${processId}`);
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deleteRitualization(id: string, processId: string) {
+  try {
+    await verifyAdminSession();
+    await prisma.ritualization.delete({ where: { id } });
+    revalidatePath(`/admin/procesos/${processId}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error deleting ritualization:", error);
     return { success: false, error: error.message };
   }
 }

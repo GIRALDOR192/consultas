@@ -32,6 +32,10 @@ export default function AdminNuevoProcesoPage() {
   const [clientName, setClientName] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [clientPhone, setClientPhone] = useState("");
+  const [clientBirthDate, setClientBirthDate] = useState("");
+  const [showSecondPerson, setShowSecondPerson] = useState(false);
+  const [clientFullName2, setClientFullName2] = useState("");
+  const [clientBirthDate2, setClientBirthDate2] = useState("");
   const [workName, setWorkName] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
@@ -71,6 +75,9 @@ export default function AdminNuevoProcesoPage() {
         clientName,
         clientEmail: clientEmail || undefined,
         clientPhone: fullPhone,
+        clientBirthDate: clientBirthDate || undefined,
+        clientBirthDate2: showSecondPerson ? clientBirthDate2 || undefined : undefined,
+        clientFullName2: showSecondPerson ? clientFullName2 || undefined : undefined,
         workName,
         description: description || undefined,
         price: parseFloat(price) || 0,
@@ -154,7 +161,7 @@ export default function AdminNuevoProcesoPage() {
             >
               <h3 className="font-serif text-lg text-[#C9A84C] border-b border-[#2A2A38] pb-2">Información del Consultante</h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2 md:col-span-2">
                   <label className="text-[#9A9AB0] text-xs font-mono tracking-widest uppercase">Nombre Completo *</label>
                   <input
@@ -168,6 +175,17 @@ export default function AdminNuevoProcesoPage() {
                 </div>
 
                 <div className="space-y-2">
+                  <label className="text-[#9A9AB0] text-xs font-mono tracking-widest uppercase">Fecha de Nacimiento (Opcional)</label>
+                  <input
+                    type="date"
+                    value={clientBirthDate}
+                    onChange={(e) => setClientBirthDate(e.target.value)}
+                    className="w-full bg-[#0A0A0F]/50 border border-[#2A2A38] rounded-xl px-4 py-3 text-sm text-[#F5F3EE] focus:outline-none focus:border-[#C9A84C]/50 transition-colors h-12 [color-scheme:dark]"
+                  />
+                  <p className="text-[#9A9AB0]/60 text-[10px] font-mono">Si la ingresas, el cliente no tendrá que completar ese paso.</p>
+                </div>
+
+                <div className="space-y-2">
                   <label className="text-[#9A9AB0] text-xs font-mono tracking-widest uppercase">Correo Electrónico (Opcional)</label>
                   <input
                     type="email"
@@ -178,7 +196,7 @@ export default function AdminNuevoProcesoPage() {
                   />
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 md:col-span-2">
                   <label className="text-[#9A9AB0] text-xs font-mono tracking-widest uppercase">Teléfono / WhatsApp (Opcional)</label>
                   <div className="flex gap-2">
                     <select
@@ -215,6 +233,51 @@ export default function AdminNuevoProcesoPage() {
                     <p className="text-[#9A9AB0] text-xs font-mono">→ {phonePrefix} {phoneNumber}</p>
                   )}
                 </div>
+
+                {/* Segunda Persona (Opcional) */}
+                {!showSecondPerson ? (
+                  <div className="md:col-span-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowSecondPerson(true)}
+                      className="w-full py-2.5 border border-dashed border-[#2A2A38] rounded-xl text-xs text-[#9A9AB0] hover:text-[#C9A84C] hover:border-[#C9A84C]/40 transition-colors flex items-center justify-center gap-1.5 font-mono"
+                    >
+                      ➕ Añadir segunda persona (Parejas / Familias)
+                    </button>
+                  </div>
+                ) : (
+                  <div className="md:col-span-2 p-4 rounded-xl border border-[#2A2A38]/60 bg-[#0A0A0F]/30 space-y-3 relative">
+                    <button
+                      type="button"
+                      onClick={() => { setShowSecondPerson(false); setClientFullName2(""); setClientBirthDate2(""); }}
+                      className="absolute top-2 right-2 text-xs text-red-400 hover:text-red-300 underline font-mono"
+                    >
+                      Quitar
+                    </button>
+                    <p className="text-[10px] font-mono text-[#C9A84C] uppercase tracking-wider">Segunda Persona</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-[#9A9AB0] text-[9px] font-mono tracking-widest uppercase">Nombre Completo</label>
+                        <input
+                          type="text"
+                          value={clientFullName2}
+                          onChange={(e) => setClientFullName2(e.target.value)}
+                          placeholder="Nombre de la pareja o familiar"
+                          className="w-full bg-[#0A0A0F]/50 border border-[#2A2A38] rounded-xl px-3 py-2.5 text-xs text-[#F5F3EE] focus:outline-none focus:border-[#C9A84C]/50 transition-colors h-10"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[#9A9AB0] text-[9px] font-mono tracking-widest uppercase">Fecha de Nacimiento</label>
+                        <input
+                          type="date"
+                          value={clientBirthDate2}
+                          onChange={(e) => setClientBirthDate2(e.target.value)}
+                          className="w-full bg-[#0A0A0F]/50 border border-[#2A2A38] rounded-xl px-3 py-2.5 text-xs text-[#F5F3EE] focus:outline-none focus:border-[#C9A84C]/50 transition-colors h-10 [color-scheme:dark]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end pt-4">

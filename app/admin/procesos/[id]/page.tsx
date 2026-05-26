@@ -25,7 +25,18 @@ import {
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { getProcessDetails, updateProcessStatus, deleteProcess, updateProcessAdminNotes, updateProcessPaymentInfo } from "@/app/admin/actions";
+import {
+  getProcessDetails,
+  updateProcessStatus,
+  deleteProcess,
+  updateProcessAdminNotes,
+  updateProcessPaymentInfo,
+  createRitualization,
+  toggleRitualization,
+  deleteRitualization,
+  updateRitualizationNotes,
+  updateProcessDescription
+} from "@/app/admin/actions";
 import { getEmotionalLogsByProcessId, getSignedReadUrl } from "@/app/proceso/actions";
 import { ProcessStatus } from "@prisma/client";
 import {
@@ -37,6 +48,17 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { Plus, Check, ChevronDown, ChevronUp, PenLine } from "lucide-react";
+
+interface Ritualization {
+  id: string;
+  name: string;
+  notes: string | null;
+  isCompleted: boolean;
+  completedAt: string | null;
+  orderIndex: number;
+  createdAt: string;
+}
 
 interface ProcessDetails {
   id: string;
@@ -52,6 +74,7 @@ interface ProcessDetails {
   r2Directory: string;
   clientMessage: string | null;
   createdAtStr: string;
+  clientLastSeenStr: string | null;
   client: {
     id: string;
     name: string;
@@ -61,6 +84,7 @@ interface ProcessDetails {
   adminNotes: string | null;
   pendingPaymentAmount: string | null;
   pendingPaymentDateStr: string | null;
+  ritualizations: Ritualization[];
   clientForm?: {
     id: string;
     fullName: string;
@@ -135,11 +159,19 @@ export default function AdminDetalleProcesoPage() {
   // Estados para notas, pagos e impresión
   const [adminNotes, setAdminNotes] = useState("");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [description, setDescription] = useState("");
+  const [isSavingDescription, setIsSavingDescription] = useState(false);
   const [pendingAmount, setPendingAmount] = useState("");
   const [pendingDate, setPendingDate] = useState("");
   const [isSavingPayment, setIsSavingPayment] = useState(false);
   const [printPerson, setPrintPerson] = useState<"persona1" | "persona2">("persona1");
   const [selectedPrintPhotoId, setSelectedPrintPhotoId] = useState<string>("");
+
+  // Estados para ritualizaciones
+  const [ritualizations, setRitualizations] = useState<Ritualization[]>([]);
+  const [newRitualName, setNewRitualName] = useState("");
+  const [isAddingRitual, setIsAddingRitual] = useState(false);
+  const [expandedRitualId, setExpandedRitualId] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadDetails() {
@@ -151,9 +183,12 @@ export default function AdminDetalleProcesoPage() {
           setStatus(data.status);
           setProgressPercent(data.progressPercent);
           setAdminNotes(data.adminNotes || "");
+          setDescription(data.description || "");
           setPendingAmount(data.pendingPaymentAmount || "");
           setPendingDate(data.pendingPaymentDateStr || "");
-          // Cargar bitácoras en orden cronológico ascendente para el gráfico
+          // Cargar ritualizaciones del proceso
+          setRitualizations((data as any).ritualizations || []);
+          // Cargar bitácoras
           const logs = await getEmotionalLogsByProcessId(id);
           setEmotionalLogs(logs as EmotionalLog[]);
         } else {
@@ -294,6 +329,82 @@ export default function AdminDetalleProcesoPage() {
     }
   };
 
+  const handleCreateRitualization = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRitualName.trim()) return;
+    setIsAddingRitual(true);
+    try {
+      const res = await createRitualization(id, newRitualName.trim());
+      if (res.success && res.ritual) {
+        toast.success("Ritualización agregada con éxito");
+        setNewRitualName("");
+        // Reload details to get all ritualizations (including orderIndex, etc.)
+        const updated = await getProcessDetails(id);
+        if (updated) {
+          setRitualizations((updated as any).ritualizations || []);
+        }
+      } else {
+        toast.error(res.error || "No se pudo agregar la ritualización");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al guardar la ritualización");
+    } finally {
+      setIsAddingRitual(false);
+    }
+  };
+
+  const handleToggleRitualization = async (ritualId: string, isCompleted: boolean) => {
+    try {
+      const res = await toggleRitualization(ritualId, id, isCompleted);
+      if (res.success) {
+        toast.success(isCompleted ? "Ritualización completada" : "Ritualización marcada como pendiente");
+        setRitualizations(prev =>
+          prev.map(r => r.id === ritualId ? { ...r, isCompleted, completedAt: isCompleted ? new Date().toISOString() : null } : r)
+        );
+      } else {
+        toast.error(res.error || "Error al actualizar estado");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al actualizar la ritualización");
+    }
+  };
+
+  const handleUpdateRitualizationNotes = async (ritualId: string, notes: string) => {
+    try {
+      const res = await updateRitualizationNotes(ritualId, id, notes);
+      if (res.success) {
+        toast.success("Anotación de ritualización guardada");
+        setRitualizations(prev =>
+          prev.map(r => r.id === ritualId ? { ...r, notes } : r)
+        );
+      } else {
+        toast.error(res.error || "Error al guardar anotación");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al actualizar la anotación");
+    }
+  };
+
+  const handleDeleteRitualization = async (ritualId: string) => {
+    if (!confirm("¿Seguro que deseas eliminar esta ritualización?")) return;
+    try {
+      const res = await deleteRitualization(ritualId, id);
+      if (res.success) {
+        toast.success("Ritualización eliminada");
+        setRitualizations(prev => prev.filter(r => r.id !== ritualId));
+        if (expandedRitualId === ritualId) setExpandedRitualId(null);
+      } else {
+        toast.error(res.error || "Error al eliminar");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al eliminar la ritualización");
+    }
+  };
+
   const handleDelete = async () => {
     if (!confirm("¿Estás absolutamente seguro de eliminar permanentemente este proceso?")) return;
     setIsDeleting(true);
@@ -425,6 +536,134 @@ export default function AdminDetalleProcesoPage() {
             </div>
           </div>
 
+          {/* Línea de Ritualizaciones */}
+          <div className="glass-panel p-6 rounded-2xl border border-[#2A2A38] space-y-6">
+            <div className="flex items-center justify-between border-b border-[#2A2A38] pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-[#C9A84C]" />
+                <h3 className="font-serif text-lg text-[#F5F3EE]">Línea de Ritualizaciones</h3>
+              </div>
+              <span className="text-[10px] font-mono text-[#9A9AB0] bg-[#1A1A24] px-2 py-0.5 rounded-md border border-[#2A2A38]">
+                {ritualizations.filter(r => r.isCompleted).length} / {ritualizations.length} Completadas
+              </span>
+            </div>
+
+            {/* Formulario para añadir nueva ritualización */}
+            <form onSubmit={handleCreateRitualization} className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Añadir nuevo ritual (ej: Limpieza Inicial, Endulzamiento, etc.)..."
+                value={newRitualName}
+                onChange={(e) => setNewRitualName(e.target.value)}
+                className="flex-1 bg-[#0A0A0F]/50 border border-[#2A2A38] rounded-xl px-4 py-2.5 text-xs text-[#F5F3EE] focus:outline-none focus:border-[#C9A84C]/50 transition-colors h-10"
+              />
+              <Button
+                type="submit"
+                disabled={isAddingRitual || !newRitualName.trim()}
+                className="bg-[#C9A84C]/10 text-[#C9A84C] border border-[#C9A84C]/30 hover:bg-[#C9A84C]/25 text-xs px-4 rounded-xl h-10 flex items-center gap-1.5 transition-all font-semibold"
+              >
+                {isAddingRitual ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5" /> Agregar
+                  </>
+                )}
+              </Button>
+            </form>
+
+            {/* Lista de ritualizaciones */}
+            {ritualizations.length === 0 ? (
+              <p className="text-center text-xs text-[#9A9AB0] py-6 italic border border-dashed border-[#2A2A38] rounded-xl bg-[#0A0A0F]/10">
+                No hay ritualizaciones registradas. Añade el primer ritual arriba.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {ritualizations.map((ritual) => {
+                  const isExpanded = expandedRitualId === ritual.id;
+                  return (
+                    <div
+                      key={ritual.id}
+                      className={`border rounded-xl transition-all ${
+                        ritual.isCompleted
+                          ? "border-[#2A2A38] bg-[#0A0A0F]/20 opacity-80"
+                          : "border-[#C9A84C]/20 bg-[#0E0E16]/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between p-3.5 gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRitualization(ritual.id, !ritual.isCompleted)}
+                            className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                              ritual.isCompleted
+                                ? "bg-[#C9A84C]/20 border-[#C9A84C] text-[#C9A84C]"
+                                : "border-[#2A2A38] text-transparent hover:border-[#C9A84C]/50"
+                            }`}
+                          >
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          </button>
+                          <span
+                            className={`text-xs font-semibold truncate ${
+                              ritual.isCompleted
+                                ? "text-[#9A9AB0] line-through decoration-1"
+                                : "text-[#F5F3EE]"
+                            }`}
+                          >
+                            {ritual.name}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedRitualId(isExpanded ? null : ritual.id)}
+                            className="text-[#9A9AB0] hover:text-[#C9A84C] p-1 transition-colors"
+                            title="Ver notas / detalles"
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="w-4 h-4" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRitualization(ritual.id)}
+                            className="text-[#9A9AB0] hover:text-red-400 p-1 transition-colors"
+                            title="Eliminar ritual"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Panel expandido */}
+                      {isExpanded && (
+                        <div className="px-3.5 pb-3.5 pt-1 border-t border-[#2A2A38]/50 space-y-3 bg-[#07070B]/50 rounded-b-xl">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-mono text-[#9A9AB0] tracking-wider uppercase block">
+                              Notas / Avance de este Ritual
+                            </label>
+                            <textarea
+                              defaultValue={ritual.notes || ""}
+                              placeholder="Escribe aquí las observaciones, progresos o requerimientos específicos de este ritual..."
+                              onBlur={(e) => handleUpdateRitualizationNotes(ritual.id, e.target.value)}
+                              className="w-full bg-[#0A0A0F]/60 border border-[#2A2A38] rounded-lg p-2.5 text-xs text-[#F5F3EE] focus:outline-none focus:border-[#C9A84C]/50 transition-colors min-h-[70px] resize-none leading-relaxed"
+                            />
+                            <p className="text-[9px] text-[#9A9AB0]/50 font-mono text-right">
+                              Las notas se guardan automáticamente al hacer clic fuera del cuadro.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Submódulos */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Link href={`/admin/procesos/${process.id}/timeline`}>
@@ -521,6 +760,47 @@ export default function AdminDetalleProcesoPage() {
                 </ResponsiveContainer>
               </div>
             )}
+          </div>
+
+          {/* Descripción Privada (Administrador) */}
+          <div className="glass-panel p-6 rounded-2xl border border-[#2A2A38] relative overflow-hidden">
+            <h3 className="font-serif text-lg text-[#C9A84C] border-b border-[#2A2A38] pb-2 mb-4 flex items-center justify-between">
+              <span>Descripción Privada del Trabajo</span>
+              <span className="text-[10px] font-mono text-emerald-400 border border-emerald-500/20 bg-emerald-500/5 px-2 py-0.5 rounded-full">Exclusivo Admin</span>
+            </h3>
+            <div className="space-y-4">
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Escribe la descripción privada o el propósito del ritual..."
+                className="w-full bg-[#0A0A0F]/50 border border-[#2A2A38] rounded-xl p-4 text-sm text-[#F5F3EE] focus:outline-none focus:border-[#C9A84C]/50 transition-colors min-h-[100px] resize-none leading-relaxed"
+              />
+              <div className="flex justify-end">
+                <Button
+                  onClick={async () => {
+                    setIsSavingDescription(true);
+                    const res = await updateProcessDescription(id, description);
+                    if (res.success) {
+                      toast.success("¡Descripción privada actualizada!");
+                      if (process) {
+                        setProcess({ ...process, description });
+                      }
+                    } else {
+                      toast.error(res.error || "Error al actualizar descripción.");
+                    }
+                    setIsSavingDescription(false);
+                  }}
+                  disabled={isSavingDescription}
+                  className="bg-[#C9A84C] hover:bg-[#F0D080] text-[#0A0A0F] font-semibold text-xs py-1.5 h-9 rounded-xl"
+                >
+                  {isSavingDescription ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    "Guardar Descripción"
+                  )}
+                </Button>
+              </div>
+            </div>
           </div>
 
           {/* Anotaciones Privadas (Editor) */}
@@ -1004,6 +1284,13 @@ export default function AdminDetalleProcesoPage() {
                       <span className="text-[10px] font-mono">WA</span>
                     </a>
                   </div>
+                </div>
+              )}
+
+              {process.clientLastSeenStr && (
+                <div>
+                  <span className="text-xs text-[#9A9AB0] block uppercase font-mono tracking-wider">Última Visita al Portal</span>
+                  <span className="text-[#C9A84C] font-mono text-xs font-semibold block mt-0.5">{process.clientLastSeenStr}</span>
                 </div>
               )}
             </div>

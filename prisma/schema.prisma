@@ -127,9 +127,11 @@ model Process {
   emotionalLogs   EmotionalLog[]
   payments        Payment[]
   notifications   Notification[]
+  clientLastSeen  DateTime?     // última vez que el cliente accedió al portal
   clientForm      ClientForm?
   notes           ProcessNote[]
   tags            ProcessTag[]
+  ritualizations  Ritualization[]
 
   @@index([token])
   @@index([secureToken])
@@ -336,4 +338,21 @@ model ActivityLog {
   @@index([userId])
   @@index([entity, entityId])
   @@map("activity_logs")
+}
+
+model Ritualization {
+  id          String    @id @default(cuid())
+  processId   String
+  name        String    // Nombre del ritual / ritualización
+  notes       String?   // Anotaciones internas sobre este ritual
+  isCompleted Boolean   @default(false)
+  completedAt DateTime?
+  orderIndex  Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  process     Process   @relation(fields: [processId], references: [id], onDelete: Cascade)
+
+  @@index([processId])
+  @@map("ritualizations")
 }

@@ -52,6 +52,13 @@ interface ProcessData {
     content: string;
     createdAt: string;
   }[];
+  ritualizations: {
+    id: string;
+    name: string;
+    notes: string | null;
+    isCompleted: boolean;
+    completedAt: string | null;
+  }[];
 }
 
 const statusColors: Record<string, string> = {
@@ -285,17 +292,15 @@ export default function ClientPortalHome() {
             {proc.workName}
           </h1>
 
-          {proc.clientMessage && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.8 }}
-              className="max-w-md mx-auto glass-panel px-6 py-4 rounded-2xl border border-[#C9A84C]/15 text-sm text-[#9A9AB0] italic leading-relaxed"
-            >
-              <MessageCircle className="w-4 h-4 text-[#C9A84C] inline mr-2 mb-0.5" />
-              {proc.clientMessage}
-            </motion.div>
-          )}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.8 }}
+            className="max-w-md mx-auto glass-panel px-6 py-4 rounded-2xl border border-[#C9A84C]/15 text-sm text-[#9A9AB0] italic leading-relaxed"
+          >
+            <MessageCircle className="w-4 h-4 text-[#C9A84C] inline mr-2 mb-0.5" />
+            {proc.clientMessage || (proc.clientName ? `Hola ${proc.clientName.trim().split(" ")[0]}, te doy la bienvenida a tu espacio seguro de evolución espiritual. Estaremos cargando todos los avances en este canal...` : "Te damos la bienvenida a tu espacio seguro de evolución espiritual. Estaremos cargando todos los avances en este canal...")}
+          </motion.div>
         </motion.div>
 
         {/* Círculo de Estado y Progreso */}
@@ -318,11 +323,13 @@ export default function ClientPortalHome() {
             />
           </svg>
           <div className="absolute inset-4 rounded-full bg-gradient-to-tr from-[#C9A84C]/5 to-[#3D2B6B]/5 backdrop-blur-md flex flex-col items-center justify-center border border-[#C9A84C]/10 shadow-[0_0_40px_rgba(201,168,76,0.05)]">
-            <Sparkles className="w-5 h-5 text-[#C9A84C]/40 mb-1" />
+            <Sparkles className="w-5 h-5 text-[#C9A84C]/60 mb-1" />
             <span className="text-[9px] font-mono text-[#9A9AB0] tracking-[0.2em] uppercase text-center px-2">
               Estado del Ritual
             </span>
-            <span className="text-xl font-serif text-[#C9A84C] font-semibold mt-1">{progress}%</span>
+            <span className="text-xs font-serif text-[#C9A84C] font-semibold mt-1 tracking-wider uppercase text-center px-1">
+              {proc.statusLabel}
+            </span>
           </div>
         </motion.div>
 
@@ -386,6 +393,60 @@ export default function ClientPortalHome() {
             </p>
           )}
         </motion.div>
+
+        {/* Línea de Ritualizaciones (Seguimiento de Altares y Ritualizaciones) */}
+        {proc.ritualizations && proc.ritualizations.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.5 }}
+            className="w-full max-w-lg glass-panel p-6 rounded-2xl border border-[#2A2A38] space-y-6 text-left"
+          >
+            <div className="flex items-center justify-between border-b border-[#2A2A38] pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-[#C9A84C]" />
+                <h3 className="font-serif text-sm text-[#F5F3EE] uppercase tracking-wider font-semibold">Seguimiento de Ritualizaciones</h3>
+              </div>
+              <span className="text-[10px] font-mono text-[#9A9AB0] bg-[#1A1A24] px-2 py-0.5 rounded-md border border-[#2A2A38]">
+                {proc.ritualizations.filter(r => r.isCompleted).length} / {proc.ritualizations.length} completados
+              </span>
+            </div>
+
+            <div className="relative pl-6 space-y-6 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-[#2A2A38]">
+              {proc.ritualizations.map((r) => (
+                <div key={r.id} className="relative group">
+                  {/* Indicador de estado */}
+                  <div className={`absolute -left-[21px] top-1 w-[12px] h-[12px] rounded-full border-2 transition-all flex items-center justify-center ${
+                    r.isCompleted 
+                      ? "bg-[#C9A84C] border-[#C9A84C] shadow-[0_0_10px_rgba(201,168,76,0.4)]" 
+                      : "bg-[#0A0A0F] border-[#2A2A38]"
+                  }`} />
+                  
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-start gap-4">
+                      <h4 className={`text-xs font-semibold ${
+                        r.isCompleted ? "text-[#F5F3EE]" : "text-[#9A9AB0]"
+                      }`}>
+                        {r.name}
+                      </h4>
+                      {r.isCompleted && r.completedAt && (
+                        <span className="text-[9px] font-mono text-[#9A9AB0]/60 shrink-0">
+                          {r.completedAt}
+                        </span>
+                      )}
+                    </div>
+                    
+                    {r.notes && (
+                      <p className="text-[11px] text-[#9A9AB0]/90 leading-relaxed italic bg-[#0A0A0F]/20 p-2.5 rounded-xl border border-[#2A2A38]/30 mt-1.5">
+                        "{r.notes}"
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {/* Módulos de acceso rápido (Poka-yoke con indicadores visuales de completado) */}
         <motion.div

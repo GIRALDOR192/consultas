@@ -24,10 +24,23 @@ export async function getClientProcessByToken(token: string) {
           orderBy: { createdAt: "asc" },
         },
         clientForm: true,
+        ritualizations: {
+          orderBy: { orderIndex: "asc" }
+        }
       },
     });
 
     if (!proc) return null;
+
+    // Actualizar la última vez que el cliente accedió al portal
+    try {
+      await prisma.process.update({
+        where: { id: proc.id },
+        data: { clientLastSeen: new Date() },
+      });
+    } catch (e) {
+      console.error("Error updating client last seen:", e);
+    }
 
     const statusLabels: Record<string, string> = {
       PENDING: "Pendiente",
@@ -70,6 +83,17 @@ export async function getClientProcessByToken(token: string) {
           month: "long",
           year: "numeric",
         }),
+      })),
+      ritualizations: proc.ritualizations.map((r) => ({
+        id: r.id,
+        name: r.name,
+        notes: r.notes,
+        isCompleted: r.isCompleted,
+        completedAt: r.completedAt ? r.completedAt.toLocaleDateString("es-ES", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        }) : null,
       })),
     };
   } catch (err) {
