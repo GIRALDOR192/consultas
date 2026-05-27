@@ -18,6 +18,12 @@ interface TimelineUpdate {
   title: string | null;
   content: string;
   createdAt: string;
+  uploads?: {
+    id: string;
+    fileName: string;
+    url: string;
+    mimeType: string;
+  }[];
 }
 
 export default function TimelinePage() {
@@ -31,7 +37,7 @@ export default function TimelinePage() {
     async function load() {
       const proc = await getClientProcessByToken(token);
       if (proc) {
-        setUpdates(proc.updates);
+        setUpdates(proc.updates as unknown as TimelineUpdate[]);
       }
       setIsLoading(false);
     }
@@ -95,7 +101,30 @@ export default function TimelinePage() {
                   <h3 className="font-serif text-[#F5F3EE] text-base">{update.title}</h3>
                 )}
                 <p className="text-[#9A9AB0] text-sm leading-relaxed">{update.content}</p>
-                <div className="flex items-center gap-1.5 text-[10px] text-[#9A9AB0]/60 font-mono">
+
+                {update.uploads && update.uploads.length > 0 && (
+                  <div className={`grid gap-2 mt-3 ${update.uploads.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                    {update.uploads.map((upload) => (
+                      <div
+                        key={upload.id}
+                        className="relative aspect-[4/3] rounded-xl overflow-hidden border border-[#2A2A38] bg-[#0A0A0F] group"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={upload.url}
+                          alt={upload.fileName}
+                          className="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-500"
+                          onClick={() => window.open(upload.url, "_blank")}
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                          <span className="text-[10px] font-mono text-[#C9A84C] uppercase tracking-wider bg-[#0A0A0F]/80 px-2 py-1 rounded border border-[#C9A84C]/35">Ver imagen</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-1.5 text-[10px] text-[#9A9AB0]/60 font-mono pt-1">
                   <Clock className="w-3 h-3" />
                   <span>{update.createdAt}</span>
                 </div>

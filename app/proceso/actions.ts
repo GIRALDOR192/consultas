@@ -21,11 +21,18 @@ export async function getClientProcessByToken(token: string) {
         },
         updates: {
           where: { isPublic: true },
-          orderBy: { createdAt: "asc" },
+          include: {
+            uploads: true
+          },
+          orderBy: { createdAt: "desc" },
         },
         clientForm: true,
         ritualizations: {
           orderBy: { orderIndex: "asc" }
+        },
+        uploads: {
+          where: { isPaymentProof: false },
+          orderBy: { createdAt: "desc" }
         }
       },
     });
@@ -54,6 +61,67 @@ export async function getClientProcessByToken(token: string) {
       WAITING_CLIENT: "Esperando al Consultante",
     };
 
+    // Firmar URLs de las imágenes de las novedades
+    const updatesWithSignedUrls = await Promise.all(
+      proc.updates.map(async (u) => {
+        const signedUploads = [];
+        for (const upload of u.uploads) {
+          try {
+            const command = new GetObjectCommand({
+              Bucket: BUCKET_NAME,
+              Key: upload.r2Key,
+            });
+            const url = await getSignedUrl(r2Client, command, { expiresIn: 3600 * 24 });
+            signedUploads.push({
+              id: upload.id,
+              fileName: upload.fileName,
+              mimeType: upload.mimeType,
+              url,
+            });
+          } catch (err) {
+            console.error("Error signing update upload URL:", err);
+          }
+        }
+        return {
+          id: u.id,
+          title: u.title,
+          content: u.content,
+          createdAt: u.createdAt.toLocaleDateString("es-ES", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          }),
+          uploads: signedUploads,
+        };
+      })
+    );
+
+    // Firmar URLs de las imágenes generales de la galería (para el cliente)
+    const galleryWithSignedUrls = [];
+    for (const upload of proc.uploads) {
+      try {
+        const command = new GetObjectCommand({
+          Bucket: BUCKET_NAME,
+          Key: upload.r2Key,
+        });
+        const url = await getSignedUrl(r2Client, command, { expiresIn: 3600 * 24 });
+        galleryWithSignedUrls.push({
+          id: upload.id,
+          fileName: upload.fileName,
+          mimeType: upload.mimeType,
+          uploadedBy: upload.uploadedBy ?? "cliente",
+          createdAt: upload.createdAt.toLocaleDateString("es-ES", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          }),
+          url,
+        });
+      } catch (err) {
+        console.error("Error signing gallery upload URL:", err);
+      }
+    }
+
     return {
       id: proc.id,
       token: proc.token,
@@ -74,16 +142,7 @@ export async function getClientProcessByToken(token: string) {
         month: "long",
         year: "numeric",
       }),
-      updates: proc.updates.map((u) => ({
-        id: u.id,
-        title: u.title,
-        content: u.content,
-        createdAt: u.createdAt.toLocaleDateString("es-ES", {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-        }),
-      })),
+      updates: updatesWithSignedUrls,
       ritualizations: proc.ritualizations.map((r) => ({
         id: r.id,
         name: r.name,
@@ -95,6 +154,7 @@ export async function getClientProcessByToken(token: string) {
           year: "numeric",
         }) : null,
       })),
+      sharedPhotos: galleryWithSignedUrls,
     };
   } catch (err) {
     console.error("Error loading client process:", err);
@@ -126,6 +186,31 @@ export async function addEmotionalLog(
         mood: data.mood ?? null,
       },
     });
+
+    // Crear notificación para el admin
+    try {
+      const moodEmojis = ["😔", "😟", "😕", "😐", "🙂", "😊", "😌", "✨", "🌟", "🌈"];
+      const emoji = data.mood && data.mood >= 1 && data.mood <= 10 ? moodEmojis[data.mood - 1] : "✨";
+      const logTypes: Record<string, string> = {
+        emocion: "Emoción",
+        sueno: "Sueño",
+        cambio: "Cambio Percibido",
+        experiencia: "Experiencia Espiritual",
+        pensamiento: "Reflexión"
+      };
+      const typeLabel = logTypes[data.type] || "Registro";
+
+      await prisma.notification.create({
+        data: {
+          processId: proc.id,
+          type: "SYSTEM",
+          title: "Nueva entrada de bitácora",
+          message: `Avance "${typeLabel}" ${data.mood ? `• ${emoji} (${data.mood}/10)` : ""}: "${data.content.substring(0, 60)}${data.content.length > 60 ? '...' : ''}"`,
+        }
+      });
+    } catch (notifErr) {
+      console.error("Error creating notification for emotional log:", notifErr);
+    }
 
     revalidatePath(`/proceso/${token}/bitacora`);
     return { success: true };
@@ -301,6 +386,22 @@ export async function saveUploadRecord(
       },
     });
 
+    // Crear notificación para el admin
+    try {
+      await prisma.notification.create({
+        data: {
+          processId: proc.id,
+          type: "SYSTEM",
+          title: data.isPaymentProof ? "Comprobante subido" : "Nuevo archivo de cliente",
+          message: data.isPaymentProof
+            ? "El consultante subió un comprobante de pago."
+            : `El consultante subió una nueva imagen: "${data.fileName}"`,
+        }
+      });
+    } catch (notifErr) {
+      console.error("Error creating notification for upload record:", notifErr);
+    }
+
     revalidatePath(`/proceso/${token}`);
     return { success: true };
   } catch (err: any) {
@@ -362,7 +463,7 @@ export async function saveAdminUploadRecord(
   }
 ) {
   try {
-    await prisma.upload.create({
+    const upload = await prisma.upload.create({
       data: {
         processId,
         r2Key: data.r2Key,
@@ -371,15 +472,16 @@ export async function saveAdminUploadRecord(
         fileType: "IMAGE",
         mimeType: data.mimeType,
         fileSizeBytes: data.fileSizeBytes,
-        isPublic: false,
+        isPublic: !data.isPaymentProof,
         isPaymentProof: data.isPaymentProof,
         uploadedBy: "admin",
       },
     });
 
+
     revalidatePath(`/admin/procesos/${processId}`);
     revalidatePath(`/admin/procesos/${processId}/multimedia`);
-    return { success: true };
+    return { success: true, upload };
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -456,6 +558,20 @@ export async function saveClientForm(
       },
     });
 
+    // Crear notificación para el admin
+    try {
+      await prisma.notification.create({
+        data: {
+          processId: proc.id,
+          type: "SYSTEM",
+          title: "Formulario completado",
+          message: `El consultante completó los datos del formulario de conexión.`,
+        }
+      });
+    } catch (notifErr) {
+      console.error("Error creating notification for client form:", notifErr);
+    }
+
     // Cambiar estado a PAYMENT_RECEIVED o PREPARATION para pokayoke si es necesario, 
     // pero por ahora solo guardamos el formulario y revalidamos.
     revalidatePath(`/proceso/${token}`);
@@ -491,5 +607,148 @@ export async function getClientForm(token: string) {
   } catch (err) {
     console.error("Error fetching client form:", err);
     return null;
+  }
+}
+
+// -------------------------------------------------------
+// TIMELINE UPDATE ACTIONS
+// -------------------------------------------------------
+
+async function verifyAdmin() {
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const token = cookieStore.get("aura_admin_session")?.value;
+  if (!token) throw new Error("No autorizado");
+  const { verifyToken } = await import("@/lib/auth/jwt");
+  const payload = await verifyToken(token);
+  if (!payload || (payload.role !== "ADMIN" && payload.role !== "WORKER")) {
+    throw new Error("Sesión inválida o rol no autorizado");
+  }
+  return payload;
+}
+
+export async function getAdminProcessUpdates(processId: string) {
+  try {
+    await verifyAdmin();
+    const list = await prisma.processUpdate.findMany({
+      where: { processId },
+      include: { uploads: true },
+      orderBy: { createdAt: "desc" }
+    });
+
+    const updatesWithSignedUrls = await Promise.all(
+      list.map(async (u) => {
+        const signedUploads = [];
+        for (const upload of u.uploads) {
+          try {
+            const command = new GetObjectCommand({
+              Bucket: BUCKET_NAME,
+              Key: upload.r2Key,
+            });
+            const url = await getSignedUrl(r2Client, command, { expiresIn: 3600 * 24 });
+            signedUploads.push({
+              id: upload.id,
+              fileName: upload.fileName,
+              mimeType: upload.mimeType,
+              url,
+            });
+          } catch (err) {
+            console.error("Error signing admin update upload URL:", err);
+          }
+        }
+        return {
+          id: u.id,
+          title: u.title,
+          content: u.content,
+          isPublic: u.isPublic,
+          createdAt: u.createdAt.toLocaleDateString("es-ES", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          uploads: signedUploads,
+        };
+      })
+    );
+
+    return updatesWithSignedUrls;
+  } catch (error) {
+    console.error("Error fetching admin process updates:", error);
+    return [];
+  }
+}
+
+export async function createProcessUpdate(
+  processId: string,
+  title: string | null,
+  content: string,
+  isPublic: boolean,
+  uploadIds: string[]
+) {
+  try {
+    const admin = await verifyAdmin();
+    const update = await prisma.processUpdate.create({
+      data: {
+        processId,
+        authorId: admin.userId,
+        title: title || null,
+        content,
+        isPublic,
+      }
+    });
+
+    if (uploadIds && uploadIds.length > 0) {
+      await prisma.upload.updateMany({
+        where: {
+          id: { in: uploadIds },
+          processId
+        },
+        data: {
+          processUpdateId: update.id,
+        }
+      });
+    }
+
+    revalidatePath(`/admin/procesos/${processId}`);
+    revalidatePath(`/admin/procesos/${processId}/timeline`);
+    const proc = await prisma.process.findUnique({
+      where: { id: processId },
+      select: { token: true }
+    });
+    if (proc) {
+      revalidatePath(`/proceso/${proc.token}`);
+      revalidatePath(`/proceso/${proc.token}/timeline`);
+    }
+
+    return { success: true, update };
+  } catch (err: any) {
+    console.error("Error creating process update:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function deleteProcessUpdate(id: string, processId: string) {
+  try {
+    await verifyAdmin();
+    await prisma.processUpdate.delete({
+      where: { id }
+    });
+    revalidatePath(`/admin/procesos/${processId}`);
+    revalidatePath(`/admin/procesos/${processId}/timeline`);
+    
+    const proc = await prisma.process.findUnique({
+      where: { id: processId },
+      select: { token: true }
+    });
+    if (proc) {
+      revalidatePath(`/proceso/${proc.token}`);
+      revalidatePath(`/proceso/${proc.token}/timeline`);
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error("Error deleting process update:", err);
+    return { success: false, error: err.message };
   }
 }

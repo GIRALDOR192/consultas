@@ -26,6 +26,7 @@ interface DashboardData {
     clientName: string;
     status: string;
     createdAt: string;
+    unreadCount?: number;
   }>;
   quickFollowups: Array<{
     id: string;
@@ -33,6 +34,7 @@ interface DashboardData {
     clientName: string;
     status: string;
     progressPercent: number;
+    unreadCount?: number;
   }>;
 }
 
@@ -99,7 +101,7 @@ export default function AdminDashboard() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-serif tracking-wide text-[#F5F3EE]">Santuario</h1>
-          <p className="text-[#9A9AB0] mt-1 text-sm tracking-wide">Visión general de procesos y energía activa.</p>
+          <p className="text-[#9A9AB0] mt-1 text-sm tracking-wide">Visión general de procesos and energía activa.</p>
         </div>
         <Link href="/admin/procesos/nuevo">
           <Button className="bg-[#C9A84C] hover:bg-[#F0D080] text-[#0A0A0F] font-semibold tracking-wide">
@@ -162,8 +164,13 @@ export default function AdminDashboard() {
                       <Sparkles className="w-4 h-4 text-[#C9A84C]" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="text-[#F5F3EE] text-sm font-medium tracking-wide">
+                      <h4 className="text-[#F5F3EE] text-sm font-medium tracking-wide flex items-center gap-2">
                         {p.workName}
+                        {p.unreadCount && p.unreadCount > 0 ? (
+                          <span className="text-[9px] font-mono tracking-widest uppercase px-1.5 py-0.5 rounded border border-red-500/25 bg-red-500/10 text-red-400 font-semibold animate-pulse flex items-center gap-1">
+                            <span className="w-1 h-1 rounded-full bg-red-400"></span> Novedad ({p.unreadCount})
+                          </span>
+                        ) : null}
                       </h4>
                       <p className="text-[#9A9AB0] text-sm mt-1">
                         Cliente: <span className="text-[#F5F3EE] font-medium">{p.clientName}</span>. Estado: {p.status}.
@@ -213,9 +220,14 @@ export default function AdminDashboard() {
                     <Link href={`/admin/procesos/${item.id}`} key={item.id} className="block">
                       <div className="p-4 rounded-xl bg-[#111118] border border-[#2A2A38] hover:border-[#C9A84C]/30 transition-all cursor-pointer">
                         <div className="flex justify-between items-center mb-2">
-                          <span className="text-[10px] uppercase font-mono tracking-widest inline-block px-2 py-0.5 rounded border border-[#C9A84C]/30 bg-[#C9A84C]/10 text-[#C9A84C]">
-                            {item.status}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] uppercase font-mono tracking-widest inline-block px-2 py-0.5 rounded border border-[#C9A84C]/30 bg-[#C9A84C]/10 text-[#C9A84C]">
+                              {item.status}
+                            </span>
+                            {item.unreadCount && item.unreadCount > 0 ? (
+                              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" title={`Nueva actividad (${item.unreadCount})`} />
+                            ) : null}
+                          </div>
                           <span className="text-xs font-mono text-[#9A9AB0]">{item.progressPercent}%</span>
                         </div>
                         <h4 className="text-[#F5F3EE] text-sm tracking-wide font-medium">{item.workName}</h4>

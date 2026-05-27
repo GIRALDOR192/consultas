@@ -57,7 +57,10 @@ export async function getDashboardStats() {
       },
       take: 5,
       include: {
-        client: true
+        client: true,
+        notifications: {
+          where: { isRead: false }
+        }
       }
     });
 
@@ -74,7 +77,10 @@ export async function getDashboardStats() {
       },
       take: 3,
       include: {
-        client: true
+        client: true,
+        notifications: {
+          where: { isRead: false }
+        }
       }
     });
 
@@ -88,14 +94,16 @@ export async function getDashboardStats() {
         workName: p.workName,
         clientName: p.client.name,
         status: p.status,
-        createdAt: p.createdAt.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
+        createdAt: p.createdAt.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
+        unreadCount: p.notifications.length,
       })),
       quickFollowups: quickFollowups.map(p => ({
         id: p.id,
         workName: p.workName,
         clientName: p.client.name,
         status: p.status,
-        progressPercent: p.progressPercent
+        progressPercent: p.progressPercent,
+        unreadCount: p.notifications.length,
       }))
     };
   } catch (error) {
@@ -134,7 +142,10 @@ export async function getProcesses(search?: string, status?: string) {
     const list = await prisma.process.findMany({
       where: whereClause,
       include: {
-        client: true
+        client: true,
+        notifications: {
+          where: { isRead: false }
+        }
       },
       orderBy: {
         createdAt: "desc"
@@ -149,7 +160,8 @@ export async function getProcesses(search?: string, status?: string) {
       status: p.status,
       priority: p.priority,
       progressPercent: p.progressPercent,
-      createdAt: p.createdAt.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
+      createdAt: p.createdAt.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
+      unreadCount: p.notifications.length,
     }));
   } catch (error) {
     console.error("Error fetching processes:", error);
@@ -160,6 +172,17 @@ export async function getProcesses(search?: string, status?: string) {
 export async function getProcessDetails(id: string) {
   try {
     await verifyAdminSession();
+
+    // Marcar como leídas todas las notificaciones pendientes de este proceso
+    try {
+      await prisma.notification.updateMany({
+        where: { processId: id, isRead: false },
+        data: { isRead: true }
+      });
+    } catch (err) {
+      console.error("Error marking process notifications as read:", err);
+    }
+
     const proc = await prisma.process.findUnique({
       where: { id },
       include: {

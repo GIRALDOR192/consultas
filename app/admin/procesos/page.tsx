@@ -25,6 +25,7 @@ interface ProcessItem {
   priority: string;
   progressPercent: number;
   createdAt: string;
+  unreadCount?: number;
 }
 
 export default function AdminProcesosPage() {
@@ -146,9 +147,16 @@ export default function AdminProcesosPage() {
             >
               <div>
                 <div className="flex justify-between items-start gap-4 mb-4">
-                  <span className={`text-[10px] font-mono tracking-widest uppercase px-2 py-1 rounded border ${getStatusBadge(p.status)}`}>
-                    {statusLabels[p.status] || p.status}
-                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className={`text-[10px] font-mono tracking-widest uppercase px-2 py-1 rounded border ${getStatusBadge(p.status)}`}>
+                      {statusLabels[p.status] || p.status}
+                    </span>
+                    {p.unreadCount && p.unreadCount > 0 ? (
+                      <span className="text-[10px] font-mono tracking-widest uppercase px-2 py-1 rounded border border-red-500/25 bg-red-500/10 text-red-400 font-semibold animate-pulse flex items-center gap-1">
+                        <span className="w-1 h-1 rounded-full bg-red-400"></span> Novedad ({p.unreadCount})
+                      </span>
+                    ) : null}
+                  </div>
                   <span className="text-[10px] font-mono tracking-widest text-[#9A9AB0]">
                     #{p.token.substring(0, 6).toUpperCase()}
                   </span>
